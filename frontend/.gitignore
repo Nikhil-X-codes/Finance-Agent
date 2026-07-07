@@ -1,0 +1,11 @@
+# Dependencies
+node_modules/
+
+# Next.js build
+.next/
+
+# Runtime SQLite database
+data/
+
+# Environment files
+.env.local

@@ -59,7 +59,8 @@ async def qa(request: Request, payload: QARequest) -> StreamingResponse:
             # Yield complete event
             complete_data = {
                 "fullText": qa_response,
-                "citations": qa_citations
+                "citations": qa_citations,
+                "questionType": state_result.get("question_type") or "general"
             }
             yield f"event: complete\ndata: {json.dumps(complete_data)}\n\n"
             

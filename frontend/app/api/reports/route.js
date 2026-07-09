@@ -15,6 +15,7 @@ export async function GET() {
     const reports = getReportsByUser(session.userId);
     const mapped = reports.map((row) => ({
       id: row.id,
+      name: row.report_json?.name || `Report ${new Date(row.created_at).toLocaleDateString()}`,
       createdAt: row.created_at || row.report_json?.createdAt,
       overallRiskLevel: row.report_json?.portfolioSummary?.overallRiskLevel || "LOW",
       generatedVia: row.generated_via || "LLM",

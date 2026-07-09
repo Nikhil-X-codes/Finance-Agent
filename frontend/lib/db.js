@@ -227,4 +227,21 @@ export function getReportById(userId, reportId) {
   return { ...row, report_json: JSON.parse(row.report_json) };
 }
 
+const _updateReportJson = db.prepare(
+  "UPDATE reports SET report_json = ? WHERE id = ? AND user_id = ?"
+);
+const _deleteReport = db.prepare(
+  "DELETE FROM reports WHERE id = ? AND user_id = ?"
+);
+
+export function updateReport(userId, reportId, reportJson) {
+  const result = _updateReportJson.run(JSON.stringify(reportJson), reportId, userId);
+  return result.changes > 0;
+}
+
+export function deleteReport(userId, reportId) {
+  const result = _deleteReport.run(reportId, userId);
+  return result.changes > 0;
+}
+
 export default db;

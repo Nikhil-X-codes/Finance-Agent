@@ -123,7 +123,15 @@ export default function DashboardHomePage() {
     );
   }
 
-  const { holdings, sectorAllocation, snapshotDate, tradesMergedCount, tradeHistory = [], realizedPnlTotal = 0 } = portfolio;
+  const { 
+    holdings, 
+    sectorAllocation, 
+    snapshotDate, 
+    tradesMergedCount, 
+    tradeHistory = [], 
+    realizedPnlTotal = 0,
+    riskStatus = { overall_risk: "MEDIUM", reasoning: "Based on guidelines and sector concentration.", flags: [] }
+  } = portfolio;
 
   // Calculate Total valuation
   const totalValue = holdings.reduce((sum, h) => sum + (h.quantity * h.avgBuyPrice), 0);
@@ -175,14 +183,28 @@ export default function DashboardHomePage() {
           <CardHeader className="pb-2">
             <CardDescription className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Overall Advisor Risk Status</CardDescription>
             <CardTitle className="text-2xl font-bold text-slate-50 flex items-center justify-between">
-              Moderate
-              <span className={`text-xs px-2 py-0.5 rounded border ${getRiskBadgeColor("MEDIUM")}`}>
-                MEDIUM RISK
+              {riskStatus.overall_risk === "HIGH" ? "High" : riskStatus.overall_risk === "LOW" ? "Low" : "Moderate"}
+              <span className={`text-xs px-2 py-0.5 rounded border ${getRiskBadgeColor(riskStatus.overall_risk)}`}>
+                {riskStatus.overall_risk} RISK
               </span>
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-xs text-slate-500">Based on guidelines and sector concentration</p>
+            <p className="text-xs text-slate-400 leading-normal mb-1">{riskStatus.reasoning}</p>
+            {riskStatus.flags && riskStatus.flags.length > 0 && (
+              <div className="mt-3 pt-2.5 border-t border-slate-800/40 space-y-1.5">
+                {riskStatus.flags.map((flag, idx) => (
+                  <div key={idx} className="flex items-start gap-1.5 text-[10px] leading-relaxed">
+                    <span className={`shrink-0 font-semibold uppercase ${
+                      flag.severity === "HIGH" ? "text-red-400" : flag.severity === "MEDIUM" ? "text-amber-400" : "text-emerald-400"
+                    }`}>
+                      [{flag.type}]
+                    </span>
+                    <span className="text-slate-400">{flag.description}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -248,7 +270,7 @@ export default function DashboardHomePage() {
                   .map(([name, weight]) => (
                     <div key={name} className="flex items-center justify-between text-xs py-1 border-b border-slate-800/40 last:border-0">
                       <span className="text-slate-300 font-medium">{name}</span>
-                      <span className="font-mono text-slate-400">{(weight * 100).toFixed(1)}%</span>
+                      <span className="font-mono text-slate-400">{Number(weight).toFixed(1)}%</span>
                     </div>
                   ))
               )}

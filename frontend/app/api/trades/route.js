@@ -78,12 +78,11 @@ export async function POST(request) {
 
     const { ticker, transactionType, quantity, price, date } = parsed.data;
 
-    // Validate ticker
-    const validTickers = new Set(["RELIANCE", "TCS", "INFY", "HDFCBANK", "ICICIBANK", "AXISBANK", "MARUTI", "M&M", "ITC", "HUL"]);
-    const isTickerInMap = Object.keys(tickerMap).length > 0 ? !!tickerMap[ticker] : validTickers.has(ticker);
-    if (!isTickerInMap) {
+    // Validate ticker format
+    const tickerRegex = /^[A-Z0-9&\-.]{2,15}$/;
+    if (!tickerRegex.test(ticker)) {
       return NextResponse.json(
-        { error: "Ticker not found. Check NSE symbol.", code: "TICKER_NOT_FOUND" },
+        { error: "Invalid ticker format. Use standard symbol (e.g. RELIANCE).", code: "INVALID_TICKER" },
         { status: 422 }
       );
     }

@@ -115,10 +115,15 @@ export default function QAPage() {
               const chunkData = JSON.parse(dataStr);
               if (chunkData.text) {
                 setMessages((prev) => {
+                  if (prev.length === 0) return prev;
                   const updated = [...prev];
-                  const last = updated[updated.length - 1];
+                  const lastIdx = updated.length - 1;
+                  const last = updated[lastIdx];
                   if (last && last.role === "assistant") {
-                    last.content += chunkData.text;
+                    updated[lastIdx] = {
+                      ...last,
+                      content: last.content + chunkData.text
+                    };
                   }
                   return updated;
                 });
@@ -129,11 +134,17 @@ export default function QAPage() {
             try {
               const completeData = JSON.parse(dataStr);
               setMessages((prev) => {
+                if (prev.length === 0) return prev;
                 const updated = [...prev];
-                const last = updated[updated.length - 1];
+                const lastIdx = updated.length - 1;
+                const last = updated[lastIdx];
                 if (last && last.role === "assistant") {
-                  last.streaming = false;
-                  last.citations = completeData.citations || [];
+                  updated[lastIdx] = {
+                    ...last,
+                    streaming: false,
+                    citations: completeData.citations || [],
+                    questionType: completeData.questionType || "general"
+                  };
                 }
                 return updated;
               });
@@ -249,6 +260,19 @@ export default function QAPage() {
                   </div>
                 )}
               </div>
+
+              {/* Question Type Badge */}
+              {msg.role === "assistant" && !msg.streaming && msg.questionType && (
+                <div className="mt-1 flex gap-1.5 pl-1">
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold border ${
+                    msg.questionType === "portfolio"
+                      ? "bg-sky-500/10 text-sky-400 border-sky-500/20"
+                      : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                  }`}>
+                    {msg.questionType === "portfolio" ? "📊 Portfolio Query" : "📚 General Finance"}
+                  </span>
+                </div>
+              )}
 
               {/* Citations / Evidence cards */}
               {msg.role === "assistant" && msg.citations && msg.citations.length > 0 && (

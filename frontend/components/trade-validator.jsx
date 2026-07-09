@@ -100,28 +100,28 @@ export default function TradeValidator({ open, onClose, tradeData, onConfirm }) 
   const getRiskDetails = () => {
     if (!result) return { level: "UNKNOWN", color: "text-slate-400", bg: "bg-slate-900", border: "border-slate-800" };
 
-    const allowed = result.allowed;
-    const warnings = result.warnings || [];
+    const level = (result.risk_level || (result.allowed ? "LOW" : "HIGH")).toUpperCase();
+    const reasoning = result.reasoning || "Audit complete.";
 
-    if (!allowed) {
+    if (level === "HIGH") {
       return {
         level: "HIGH RISK",
         color: "text-red-400",
         bg: "bg-red-950/20",
         border: "border-red-900/50",
         badge: "bg-red-500/10 text-red-400 border-red-500/20",
-        suggested: "Do not execute. Trade violates concentration limits or holdings are insufficient.",
+        suggested: reasoning,
       };
     }
 
-    if (warnings.length > 0) {
+    if (level === "MEDIUM") {
       return {
         level: "MEDIUM RISK",
         color: "text-amber-400",
         bg: "bg-amber-950/20",
         border: "border-amber-900/50",
         badge: "bg-amber-500/10 text-amber-400 border-amber-500/20",
-        suggested: "Proceed with caution. The trade is within legal limits, but approaches exposure thresholds.",
+        suggested: reasoning,
       };
     }
 
@@ -131,7 +131,7 @@ export default function TradeValidator({ open, onClose, tradeData, onConfirm }) 
       bg: "bg-emerald-950/20",
       border: "border-emerald-900/50",
       badge: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
-      suggested: "Compliant trade. Action is aligned with concentration guidelines.",
+      suggested: reasoning,
     };
   };
 
@@ -174,9 +174,16 @@ export default function TradeValidator({ open, onClose, tradeData, onConfirm }) 
               </div>
               
               <div className="space-y-1">
-                <span className="text-[10px] text-slate-500 font-semibold block uppercase">Suggested Action</span>
+                <span className="text-[10px] text-slate-500 font-semibold block uppercase">AI Advice & Analysis</span>
                 <p className="text-slate-350 font-medium leading-relaxed">{risk.suggested}</p>
               </div>
+
+              {result.portfolio_impact && (
+                <div className="space-y-1 pt-1">
+                  <span className="text-[10px] text-slate-500 font-semibold block uppercase">Portfolio Impact</span>
+                  <p className="text-slate-350 leading-relaxed font-medium">{result.portfolio_impact}</p>
+                </div>
+              )}
 
               {result.new_portfolio_weight !== undefined && (
                 <div className="grid grid-cols-2 gap-4 pt-2 border-t border-slate-800/40 text-[10px] text-slate-500 font-mono">
@@ -235,7 +242,7 @@ export default function TradeValidator({ open, onClose, tradeData, onConfirm }) 
             onConfirm(tradeData);
             onClose();
           }}
-          disabled={loading || !result || !result.allowed}
+          disabled={loading || !result}
           className="text-xs px-4 bg-sky-600 hover:bg-sky-500 text-slate-50"
         >
           Proceed

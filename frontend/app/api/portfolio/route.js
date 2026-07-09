@@ -111,6 +111,46 @@ export async function GET() {
     // Calculate realized P&L total
     const realizedPnlTotal = tradeHistory.reduce((sum, t) => sum + (t.realizedPnl || 0), 0);
 
+    // Call FastAPI /portfolio/risk-status for dynamic risk analysis
+    const baseUrl = process.env.FASTAPI_URL || "http://localhost:8000";
+    const internalKey = process.env.INTERNAL_API_KEY || "";
+    
+    const formattedHoldingsForRisk = mergedHoldings.map((h) => ({
+      isin: h.isin || "",
+      ticker: h.ticker || "",
+      name: h.name || "",
+      quantity: Number(h.quantity || 0),
+      avg_buy_price: Number(h.avgBuyPrice || 0),
+      asset_type: h.assetType || "STOCK",
+      sector: h.sector || "",
+      status: "UNREALIZED",
+      current_price: Number(h.currentPrice || h.avgBuyPrice || 0),
+    }));
+
+    let riskStatus = {
+      overall_risk: "MEDIUM",
+      reasoning: "Completed portfolio risk audit.",
+      flags: []
+    };
+
+    try {
+      const riskRes = await fetch(`${baseUrl}/portfolio/risk-status`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Internal-Key": internalKey,
+        },
+        body: JSON.stringify({ portfolio: formattedHoldingsForRisk }),
+      });
+
+      if (riskRes.ok) {
+        const riskData = await riskRes.json();
+        riskStatus = riskData;
+      }
+    } catch (riskErr) {
+      console.error("FastAPI risk-status check failed, falling back:", riskErr);
+    }
+
     return NextResponse.json({
       snapshotId: snapshot.id,
       snapshotDate: snapshot.created_at,
@@ -119,6 +159,7 @@ export async function GET() {
       tradeHistory,
       realizedPnlTotal,
       sectorAllocation,
+      riskStatus,
     });
   } catch (error) {
     console.error("Portfolio error:", error);

@@ -31,6 +31,7 @@ class PortfolioState(TypedDict, total=False):
     report_markdown: str
     report_json: dict[str, Any]
     qa_response: str
+    question_type: str  # "portfolio" | "general"
     qa_citations: list[dict[str, Any]]
     validation_result: dict[str, Any]  # output of trade validator
 

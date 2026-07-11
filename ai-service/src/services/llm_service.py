@@ -11,6 +11,7 @@ try:  # pragma: no cover - optional runtime dependency
 except Exception:  # pragma: no cover - keep isolated tests working without heavy deps
     Groq = None
 
+from langsmith import traceable
 from ..config.constants import GROQ_CIRCUIT_RESET_SECONDS, GROQ_FAILURE_THRESHOLD
 from ..config.settings import settings
 
@@ -82,6 +83,7 @@ class LLMService:
             fallback_reason=reason,
         )
 
+    @traceable(run_type="llm", name="Groq Completion")
     def generate(self, prompt: str, system_prompt: str | None = None) -> LLMResult:
         if self.circuit_breaker.is_open():
             return self._rule_based_fallback(prompt, "circuit_open")

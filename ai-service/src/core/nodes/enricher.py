@@ -46,6 +46,9 @@ async def enrich_portfolio(state: PortfolioState) -> dict[str, Any]:
             holdings_t = get_holdings(h.isin)
             mf_tasks.append((h, nav_t, meta_t, holdings_t))
 
+    # Fetch general market news task if include_news is True
+    market_news_task = get_stock_news("NIFTY", "Indian Share Market") if include_news else None
+
     # 2. Gather all tasks concurrently
     flat_tasks: list[Any] = []
     for _, quote_t, fund_t, news_t in stock_tasks:
@@ -55,6 +58,9 @@ async def enrich_portfolio(state: PortfolioState) -> dict[str, Any]:
             
     for _, nav_t, meta_t, holdings_t in mf_tasks:
         flat_tasks.extend([nav_t, meta_t, holdings_t])
+
+    if market_news_task is not None:
+        flat_tasks.append(market_news_task)
 
     results = await asyncio.gather(*flat_tasks, return_exceptions=True)
 
@@ -210,8 +216,18 @@ async def enrich_portfolio(state: PortfolioState) -> dict[str, Any]:
             "fresh": True
         })
 
+    market_news = []
+    if market_news_task is not None:
+        try:
+            market_news_res = results[-1]
+            if not isinstance(market_news_res, Exception) and market_news_res.data:
+                market_news = market_news_res.data.get("news", [])
+        except Exception:
+            pass
+
     return {
         "enriched_holdings": enriched,
+        "market_news": market_news,
         "macro_context": {},
         "errors": errors,
         "current_node": "enricher"

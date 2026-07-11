@@ -18,7 +18,7 @@ from src.core.nodes.trade_validator import validate_trade
 from src.core.state import PortfolioState
 
 # Global tracer instance for LangSmith integration
-tracer = LangChainTracer(project_name="Agent")
+tracer = LangChainTracer(project_name=settings.langsmith_project or "Agent")
 
 
 def create_agent_graph() -> StateGraph:

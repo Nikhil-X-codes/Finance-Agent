@@ -96,6 +96,10 @@ class Settings:
     groq_circuit_reset_seconds: int = _int_env("GROQ_CIRCUIT_RESET_SECONDS", GROQ_CIRCUIT_RESET_SECONDS)
     temp_file_ttl_seconds: int = _int_env("TEMP_FILE_TTL_SECONDS", TEMP_FILE_TTL_SECONDS)
     max_pdf_size_bytes: int = _int_env("MAX_PDF_SIZE_BYTES", MAX_PDF_SIZE_BYTES)
+    langsmith_tracing: str = os.getenv("LANGSMITH_TRACING", "false")
+    langsmith_api_key: str = os.getenv("LANGSMITH_API_KEY", "")
+    langsmith_project: str = os.getenv("LANGSMITH_PROJECT", "Agent")
+    langsmith_endpoint: str = os.getenv("LANGSMITH_ENDPOINT", "https://api.smith.langchain.com")
 
 
 settings = Settings()

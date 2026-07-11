@@ -37,6 +37,47 @@ def format_output(state: PortfolioState) -> dict[str, Any]:
     overall_risk = recs_data.get("overall_risk_level", "LOW")
     total_realized_pnl = sum(t.get("realized_pnl", 0.0) for t in realized_holdings)
     
+    # 2. Compile Live News (max 5)
+    live_news = []
+    seen_urls = set()
+    
+    # First gather news from active holdings
+    for h in active_holdings:
+        ticker = h.get("ticker", "General")
+        for n in h.get("news") or []:
+            url = n.get("url")
+            if url and url not in seen_urls:
+                seen_urls.add(url)
+                live_news.append({
+                    "ticker": ticker,
+                    "title": n.get("title", ""),
+                    "url": url,
+                    "source": n.get("source", "Market News"),
+                    "publishedAt": n.get("published_at") or n.get("publishedAt") or "",
+                    "summary": n.get("summary", "")
+                })
+                if len(live_news) >= 5:
+                    break
+        if len(live_news) >= 5:
+            break
+            
+    # Fill remaining slots from general market news
+    if len(live_news) < 5:
+        for n in state.get("market_news") or []:
+            url = n.get("url")
+            if url and url not in seen_urls:
+                seen_urls.add(url)
+                live_news.append({
+                    "ticker": "MARKET",
+                    "title": n.get("title", ""),
+                    "url": url,
+                    "source": n.get("source", "Indian Share Market"),
+                    "publishedAt": n.get("published_at") or n.get("publishedAt") or "",
+                    "summary": n.get("summary", "")
+                })
+                if len(live_news) >= 5:
+                    break
+
     report_json = {
         "id": f"rpt_{uuid.uuid4().hex[:12]}",
         "createdAt": datetime.now(timezone.utc).isoformat(),
@@ -83,6 +124,7 @@ def format_output(state: PortfolioState) -> dict[str, Any]:
             }
             for t in realized_holdings
         ],
+        "liveNews": live_news,
         "disclaimer": MANDATORY_DISCLAIMER
     }
 
@@ -204,10 +246,26 @@ def render_report_markdown(report: dict[str, Any], holdings: list[dict[str, Any]
             lines.append(f"- **Citations:** {', '.join([f'*{c}*' for c in r['citations']])}")
         lines.append("")
 
+    # Add Live News Section
+    live_news = report.get("liveNews") or []
+    if live_news:
+        lines.extend([
+            "",
+            "## 5. Live Market News",
+            "",
+        ])
+        for item in live_news:
+            source_str = f" (*Source: {item['source']}*)" if item.get('source') else ""
+            date_str = f" - {item['publishedAt'][:10]}" if item.get('publishedAt') else ""
+            lines.append(
+                f"- **[{item['ticker']}]** [{item['title']}]({item['url']}){source_str}{date_str}"
+            )
+        lines.append("")
+
     # Add Disclaimer Section
     lines.extend([
         "---",
-        "## 5. Regulatory Disclaimers & Disclosures",
+        "## 6. Regulatory Disclaimers & Disclosures",
         "",
         MANDATORY_DISCLAIMER,
         ""

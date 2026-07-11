@@ -2,8 +2,7 @@
   "name": "finance-agent",
   "private": true,
   "workspaces": [
-    "frontend",
-    "shared"
+    "frontend"
   ],
   "scripts": {
     "dev": "npm run dev --workspaces --if-present",

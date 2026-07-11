@@ -44,3 +44,4 @@ class PortfolioState(TypedDict, total=False):
     # Control/debugging fields
     errors: list[dict[str, str]]
     current_node: str
+    market_news: list[dict[str, Any]]

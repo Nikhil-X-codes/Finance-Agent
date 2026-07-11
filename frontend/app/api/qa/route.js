@@ -66,14 +66,24 @@ export async function POST(request) {
     if (snapshot) {
       const trades = getTradesSinceDate(session.userId, snapshot.created_at);
       const mergedHoldings = applyTradesToSnapshot(snapshot.holdings_json, trades);
-      formattedHoldings = mergedHoldings.map((h) => ({
+      const realizedTrades = (snapshot.holdings_json || []).filter((h) => h.status === "REALIZED");
+      const combined = [
+        ...mergedHoldings.map((h) => ({ ...h, status: "UNREALIZED" })),
+        ...realizedTrades
+      ];
+      
+      formattedHoldings = combined.map((h) => ({
         isin: h.isin || "INE000000000",
         ticker: h.ticker || "",
         name: h.name || h.ticker || "",
-        quantity: Number(h.quantity),
-        avg_buy_price: Number(h.avgBuyPrice),
-        asset_type: h.assetType === "MUTUAL_FUND" ? "MUTUAL_FUND" : "STOCK",
-        sector: h.sector || "Other"
+        quantity: Number(h.quantity || 0),
+        avg_buy_price: Number(h.avgBuyPrice || h.avg_buy_price || 0),
+        asset_type: h.assetType || h.asset_type || "STOCK",
+        sector: h.sector || "Other",
+        status: h.status || "UNREALIZED",
+        current_price: h.currentPrice !== undefined && h.currentPrice !== null ? Number(h.currentPrice) : null,
+        sell_price: h.sellPrice !== undefined && h.sellPrice !== null ? Number(h.sellPrice) : null,
+        realized_pnl: h.realizedPnl !== undefined && h.realizedPnl !== null ? Number(h.realizedPnl) : null,
       }));
     }
 

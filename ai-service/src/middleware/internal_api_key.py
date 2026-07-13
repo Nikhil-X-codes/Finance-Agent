@@ -19,7 +19,7 @@ class InternalApiKeyMiddleware(BaseHTTPMiddleware):
         bypass_exact = {
             "/health", "/docs", "/openapi.json", "/redoc", "/favicon.ico", "/",
             "/parse-statement", "/v1/enrich", "/validate-trade",
-            "/generate-report", "/v1/rag", "/qa",
+            "/generate-report", "/qa",
             "/mf/categories", "/v1/stocks/popular", "/v1/stocks/search",
         }
         

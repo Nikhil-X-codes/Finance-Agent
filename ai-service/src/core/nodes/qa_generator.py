@@ -21,22 +21,8 @@ async def generate_qa_response(state: PortfolioState) -> dict[str, Any]:
     errors: list[dict[str, Any]] = list(state.get("errors") or [])
 
     question_lower = question.lower()
-    
-    # 1. Detect if it is a Portfolio/User Data question
-    portfolio_keywords = [
-        "my portfolio", "my holding", "should i sell", "should i buy", 
-        "should i hold", "diversified", "concentration", "weight", 
-        "allocation", "rebalance", "trim", "exit", "add more",
-        "which stock", "riskiest", "best performer", "worst", 
-        "sector exposure", "pnl", "profit", "loss", "gain",
-        "sold", "bought", "trade", "history", "past", "previous", "realized",
-        "what did i sell", "what did i buy", "what do i own",
-        "my", "mine", "i own", "did i sell", "did i buy", "have i traded",
-        "best trade", "worst trade"
-    ]
-    is_portfolio_question = any(kw in question_lower for kw in portfolio_keywords)
-    
-    # Check if user mentioned any held stock ticker
+
+    # Pre-parse holdings and trades
     held_tickers = []
     source_dicts = []
     for h in holdings:
@@ -58,16 +44,12 @@ async def generate_qa_response(state: PortfolioState) -> dict[str, Any]:
             })
         if ticker:
             held_tickers.append(ticker.lower())
-            
-    mentions_held_stock = any(ticker in question_lower for ticker in held_tickers)
-    is_portfolio_question = is_portfolio_question or mentions_held_stock
 
     active_holdings = [item for item in source_dicts if item.get("status") != "REALIZED" and item.get("quantity", 0) > 0]
     realized_trades = [item for item in source_dicts if item.get("status") == "REALIZED" or item.get("quantity", 0) == 0]
-
     has_portfolio_data = len(active_holdings) > 0 or len(realized_trades) > 0
 
-    # Initialize LLM
+    # Initialize LLM Service early for classification
     try:
         llm_service = LLMService.get_instance()
     except Exception as e:
@@ -83,140 +65,149 @@ async def generate_qa_response(state: PortfolioState) -> dict[str, Any]:
             "current_node": "qa_generator"
         }
 
-    # ==========================================
-    # ROUTE A: PORTFOLIO QUESTION (Portfolio RAG)
-    # ==========================================
-    if is_portfolio_question:
-        if not has_portfolio_data:
-            return {
-                "qa_response": "I don't have your portfolio data to answer this. Please upload a statement first.",
-                "qa_citations": [],
-                "question_type": "portfolio",
-                "generated_via": "RULE_BASED",
-                "current_node": "qa_generator"
-            }
-            
+    # Step 1: Pre-classify the question as portfolio-related or general
+    is_portfolio_related = False
+    if has_portfolio_data:
+        classification_system_prompt = (
+            "You are a classification assistant. Your task is to classify a user's question about finance "
+            "into exactly one of two categories: 'portfolio' or 'general'.\n\n"
+            "portfolio: The question is about the user's own investments, holdings, trades, portfolio value, "
+            "diversification, risk, sector exposure, P&L, or specific stocks/funds they own/sold (e.g. TATACOMM, GMBREW, etc.).\n"
+            "general: The question is a general finance, stock market, investment concept, definition, rule, or taxation query "
+            "(e.g., 'what is SIP?', 'how do mutual funds work?', 'what is the rate of STCG in India?', etc.) "
+            "that does not reference the user's specific assets or portfolio.\n\n"
+            "Output ONLY the category name ('portfolio' or 'general'). Do not output any explanation or extra text."
+        )
+        classification_prompt = f"Classify this question:\n\"{question}\""
         try:
-            # 1. Index portfolio dynamically
+            class_res = llm_service.generate(prompt=classification_prompt, system_prompt=classification_system_prompt)
+            class_text = class_res.text.strip().lower()
+            if "portfolio" in class_text:
+                is_portfolio_related = True
+        except Exception as e:
+            # Fallback keyword-based classification on exception
+            portfolio_keywords = [
+                "my", "portfolio", "holding", "own", "hold", "sell", "buy",
+                "profit", "loss", "p&l", "pnl", "diversif", "concentr",
+                "weight", "invest", "value", "performance", "return"
+            ]
+            is_portfolio_related = any(kw in question_lower for kw in portfolio_keywords) or any(t in question_lower for t in held_tickers)
+
+    # Build context and retrieve RAG records only if portfolio-related
+    user_context = ""
+    citations = []
+
+    if is_portfolio_related:
+        try:
+            # 1. Index portfolio dynamically (now indexes 8 document types)
             await portfolio_rag.index_portfolio(active_holdings, realized_trades)
+            # 2. Retrieve top matching chunks (RAG uses adaptive thresholds internally)
+            rag_results = await portfolio_rag.search(question, top_k=5)
             
-            # 2. Search index
-            results = await portfolio_rag.search(question, top_k=3)
-            
-            if results:
+            if rag_results:
                 context_parts = []
-                for r in results:
-                    context_parts.append(f"[{r['type'].upper()}] {r['content']}")
-                doc_context = "\n\n".join(context_parts)
-                
-                system_prompt = "You are a professional personal portfolio analysis assistant."
-                prompt = f"""You are a personal portfolio assistant. Answer the user's question using their portfolio records.
-
-USER RECORDS:
-{doc_context}
-
-USER QUESTION: {question}
-
-RULES:
-1. Use ONLY the user records provided above. Do NOT make up numbers or guess.
-2. Cite specific tickers, prices, quantities, and realized profits/losses in your answer.
-3. Be concise and direct (2-3 sentences).
-4. If the question asks for details not present in the user records, say "I don't see that in your records."
-
-ANSWER:"""
-                
-                res = llm_service.generate(prompt=prompt, system_prompt=system_prompt)
-                answer = _clean_repetitive_phrases(res.text)
-                
-                # Format citations to use actual portfolio trade records
-                citations = [
-                    {
-                        "source": f"{r.get('source', 'portfolio_record')} (Score: {r.get('score', 0):.2f})",
-                        "docTitle": f"Portfolio {r.get('type', 'record').capitalize()}",
-                        "section": r.get("doc_id", "details"),
-                        "date": "2026-07-11",
-                        "relevantText": r.get("content", "")[:300]
+                for r in rag_results:
+                    doc_type = r['type'].upper()
+                    context_parts.append(f"[{doc_type}] {r['content']}")
+                    
+                    # Map doc types to user-friendly titles
+                    type_labels = {
+                        "holding": "Portfolio Holding",
+                        "trade": "Trade History",
+                        "summary": "Portfolio Summary",
+                        "analysis": "Portfolio Analysis"
                     }
-                    for r in results
-                ]
-                
-                return {
-                    "qa_response": answer,
-                    "qa_citations": citations,
-                    "question_type": "portfolio_rag",
-                    "generated_via": "LLM",
-                    "current_node": "qa_generator"
-                }
+                    
+                    from datetime import date
+                    citations.append({
+                        "source": f"{r.get('source', 'portfolio')} (Score: {r.get('score', 0):.2f})",
+                        "docTitle": type_labels.get(r.get('type', 'record'), "Portfolio Record"),
+                        "section": r.get("doc_id", "details"),
+                        "date": date.today().isoformat(),
+                        "relevantText": r.get("content", "")[:300]
+                    })
+                user_context += "RELEVANT PORTFOLIO RECORDS:\n" + "\n".join(context_parts) + "\n\n"
         except Exception as e:
-            errors.append({
-                "code": "PORTFOLIO_RAG_FAILED",
-                "message": f"Portfolio RAG search failed: {e}"
-            })
+            errors.append({"code": "QA_RAG_SEARCH_FAILED", "message": str(e)})
 
-        # Fallback to direct context if RAG search is empty or failed
-        system_prompt = "You are a professional SEBI-compliant investment and portfolio analysis AI advisor."
-        prompt = f"""You are a portfolio analysis AI. Analyze the user's portfolio context and answer their question.
+        # Append general summary context
+        if portfolio_context and portfolio_context != "No portfolio data available.":
+            user_context += f"PORTFOLIO OVERVIEW & SUMMARY:\n{portfolio_context}\n"
 
-PORTFOLIO DATA:
-{portfolio_context}
+    # Generate answer with unified prompt
+    system_prompt = (
+        "You are a knowledgeable personal portfolio analyst and Indian financial education assistant. "
+        "You have dual expertise:\n"
+        "1. PORTFOLIO ANALYSIS: You can analyze holdings, calculate returns, assess diversification, and explain "
+        "portfolio performance using the user's actual data.\n"
+        "2. FINANCIAL EDUCATION: You can explain Indian market concepts (NSE/BSE, SEBI regulations, mutual funds, "
+        "STCG/LTCG taxation, SIP strategies, etc.) clearly and accurately.\n\n"
+        "BEHAVIORAL RULES:\n"
+        "- When answering portfolio questions, ALWAYS cite exact numbers (tickers, quantities, prices, P&L) from the provided data.\n"
+        "- Never fabricate holdings, prices, or transactions that are not in the user's data.\n"
+        "- If the user asks about a holding not in their portfolio, clearly state: 'I don't see that in your portfolio records.'\n"
+        "- For general finance questions, provide accurate information grounded in Indian market context.\n"
+        "- If you are not confident about a specific regulation, date, or circular number, say so rather than guessing.\n"
+        "- Never start responses with 'Based on your portfolio...' or similar repetitive openings."
+    )
+
+    # Build conversation context from history
+    conversation_context = ""
+    conv_history = state.get("conversation_history") or []
+    if conv_history:
+        recent_turns = conv_history[-6:]  # Last 3 exchanges (6 messages)
+        history_lines = []
+        for turn in recent_turns:
+            role = turn.get("role", "user").upper()
+            content = turn.get("content", "")[:300]
+            history_lines.append(f"{role}: {content}")
+        conversation_context = "RECENT CONVERSATION:\n" + "\n".join(history_lines) + "\n\n"
+
+    prompt = f"""{conversation_context}USER PORTFOLIO DATA:
+{user_context if user_context else "No user portfolio data uploaded yet."}
 
 USER QUESTION: {question}
 
-RULES:
-1. Base your answer on the portfolio data provided above.
-2. Always mention exact numbers: quantities, prices, weights, values where relevant.
-3. If asked about a sold stock, specify its realized P&L.
-4. Respond in 2-3 short sentences. Be direct.
+ANSWER INSTRUCTIONS:
+Follow this decision process:
+
+STEP 1 — CLASSIFY THE QUESTION:
+Determine if the user is asking about their OWN investments, holdings, trades, portfolio performance, weights, profits/losses, or any specific ticker they hold.
+
+STEP 2 — IF PORTFOLIO-RELATED:
+- Use the USER PORTFOLIO DATA above to answer with precision.
+- Cite exact tickers, quantities, buy/sell prices, values, weights, and P&L from the data.
+- Perform any requested calculations (returns, percentage changes, weight comparisons) using the actual numbers.
+- If the question references a holding not in their data, say "I don't see [ticker] in your portfolio records."
+
+STEP 3 — IF GENERAL FINANCE QUESTION:
+- Answer as an Indian financial education expert.
+- Explain concepts in the context of Indian markets (NSE/BSE, SEBI, INR, Indian tax rules like STCG at 20%, LTCG at 12.5% above ₹1.25 lakh).
+- Use concrete examples with INR values when explaining concepts.
+- If unsure about a specific regulation or date, acknowledge the uncertainty.
+
+RESPONSE FORMAT:
+- Be concise but complete. Use 2-4 sentences for simple questions, more for complex analysis.
+- For portfolio questions, always include the specific numbers that support your answer.
+- Never start with "Based on your portfolio..." or similar phrases.
+- Use plain language — avoid jargon unless the user used it first.
 
 ANSWER:"""
-
-        citations = [
-            {
-                "source": "user_portfolio",
-                "docTitle": "Uploaded Statement",
-                "section": "Portfolio Holdings",
-                "date": "2026-07-06",
-                "relevantText": "Calculated value-based weights and holdings from user's uploaded statement or trade log."
-            }
-        ]
-        
-        try:
-            res = llm_service.generate(prompt=prompt, system_prompt=system_prompt)
-            answer = _clean_repetitive_phrases(res.text)
-            return {
-                "qa_response": answer,
-                "qa_citations": citations,
-                "question_type": "portfolio",
-                "generated_via": "LLM",
-                "current_node": "qa_generator"
-            }
-        except Exception as e:
-            errors.append({"code": "PORTFOLIO_QA_FAILED", "message": str(e)})
-
-    # ==========================================
-    # ROUTE B: GENERAL KNOWLEDGE QUESTION
-    # ==========================================
-    system_prompt = "You are a helpful financial education assistant."
-    prompt = f"""You are a helpful financial education assistant. Answer the user's question clearly and educationally.
-
-USER QUESTION: {question}
-
-RULES:
-1. Give a clear, educational answer.
-2. Use simple language, avoid excessive jargon, and explain concepts simply.
-3. Provide examples where helpful.
-4. Keep the answer concise (2-4 sentences).
-5. If the question is about investing strategy, mention that it's general advice and not personalized.
-
-Respond in 2-4 sentences. Be direct."""
 
     try:
         res = llm_service.generate(prompt=prompt, system_prompt=system_prompt)
         answer = _clean_repetitive_phrases(res.text)
+        
+        # Align badge question type with classification and RAG presence
+        if is_portfolio_related:
+            question_type = "portfolio_rag" if citations else "portfolio"
+        else:
+            question_type = "general"
+
         return {
             "qa_response": answer,
-            "qa_citations": [],
-            "question_type": "general",
+            "qa_citations": citations,
+            "question_type": question_type,
             "generated_via": "LLM",
             "current_node": "qa_generator"
         }

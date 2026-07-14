@@ -5,7 +5,7 @@ import { getLastSnapshot, getTradesSinceDate } from "@/lib/db";
 function applyTradesToSnapshot(snapshotHoldings, trades) {
   const holdingsMap = new Map();
   for (const h of snapshotHoldings) {
-    holdingsMap.set(h.ticker, { ...h });
+    holdingsMap.set(h.ticker, { ...h, status: h.status || "UNREALIZED" });
   }
 
   for (const trade of trades) {
@@ -19,6 +19,7 @@ function applyTradesToSnapshot(snapshotHoldings, trades) {
         const totalQty = existing.quantity + trade.quantity;
         existing.quantity = totalQty;
         existing.avgBuyPrice = totalQty > 0 ? totalCost / totalQty : 0;
+        existing.status = "UNREALIZED";
       } else {
         holdingsMap.set(ticker, {
           ticker,
@@ -28,16 +29,22 @@ function applyTradesToSnapshot(snapshotHoldings, trades) {
           avgBuyPrice: trade.price,
           assetType: "STOCK",
           sector: "",
+          status: "UNREALIZED",
         });
       }
     } else if (trade.transaction_type === "SELL") {
       if (existing) {
-        existing.quantity -= trade.quantity;
+        existing.quantity = Math.max(0, existing.quantity - trade.quantity);
+        if (existing.quantity === 0) {
+          existing.status = "REALIZED";
+          existing.sellPrice = trade.price;
+          existing.realizedPnl = (trade.price - existing.avgBuyPrice) * trade.quantity;
+        }
       }
     }
   }
 
-  return Array.from(holdingsMap.values()).filter((h) => h.quantity > 0);
+  return Array.from(holdingsMap.values());
 }
 
 export async function POST(request) {
@@ -66,13 +73,8 @@ export async function POST(request) {
     if (snapshot) {
       const trades = getTradesSinceDate(session.userId, snapshot.created_at);
       const mergedHoldings = applyTradesToSnapshot(snapshot.holdings_json, trades);
-      const realizedTrades = (snapshot.holdings_json || []).filter((h) => h.status === "REALIZED");
-      const combined = [
-        ...mergedHoldings.map((h) => ({ ...h, status: "UNREALIZED" })),
-        ...realizedTrades
-      ];
       
-      formattedHoldings = combined.map((h) => ({
+      formattedHoldings = mergedHoldings.map((h) => ({
         isin: h.isin || "INE000000000",
         ticker: h.ticker || "",
         name: h.name || h.ticker || "",
@@ -80,10 +82,10 @@ export async function POST(request) {
         avg_buy_price: Number(h.avgBuyPrice || h.avg_buy_price || 0),
         asset_type: h.assetType || h.asset_type || "STOCK",
         sector: h.sector || "Other",
-        status: h.status || "UNREALIZED",
+        status: h.status || (h.quantity === 0 ? "REALIZED" : "UNREALIZED"),
         current_price: h.currentPrice !== undefined && h.currentPrice !== null ? Number(h.currentPrice) : null,
-        sell_price: h.sellPrice !== undefined && h.sellPrice !== null ? Number(h.sellPrice) : null,
-        realized_pnl: h.realizedPnl !== undefined && h.realizedPnl !== null ? Number(h.realizedPnl) : null,
+        sell_price: h.sellPrice !== undefined && h.sellPrice !== null ? Number(h.sellPrice) : 0.0,
+        realized_pnl: h.realizedPnl !== undefined && h.realizedPnl !== null ? Number(h.realizedPnl) : 0.0,
       }));
     }
 

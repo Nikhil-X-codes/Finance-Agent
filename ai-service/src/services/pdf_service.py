@@ -64,56 +64,53 @@ class PDFService:
         )
         structured_llm = llm.with_structured_output(StatementExtraction)
 
-        SECTOR_CLASSIFICATION_PROMPT = """Classify each holding into exactly one sector.
+        SECTOR_CLASSIFICATION_PROMPT = """Classify each holding into exactly one sector using the rules below.
 
-STOCK sectors:
-- BANKING (HDFCBANK, ICICIBANK, SBIN, AXISBANK, KOTAKBANK)
-- IT / TECHNOLOGY (INFY, TCS, WIPRO, HCLTECH, TECHM)
-- ENERGY / OIL (RELIANCE, ONGC, NTPC, POWERGRID, COALINDIA)
-- PHARMA (SUNPHARMA, DRREDDY, CIPLA, DIVISLAB, BIOCON)
-- FMCG (ITC, HINDUNILVR, NESTLE, BRITANNIA, DABUR)
-- AUTOMOBILE (TATAMOTORS, MARUTI, M&M, EICHERMOT, BAJAJ-AUTO)
-- METALS / MINING (TATASTEEL, JSWSTEEL, HINDALCO, COALINDIA)
-- TELECOM (BHARTIARTL, IDEA, RCOM)
-- REAL ESTATE (DLF, OBEROIRLTY, GODREJPROP)
-- INFRASTRUCTURE / CONSTRUCTION (LT, ADANIPORTS, DMART)
-- CHEMICALS (UPL, PIIND, SRF, DEEPAKNTR)
-- FINANCIAL SERVICES (BAJFINANCE, HDFCLIFE, ICICIPRULI, SBILIFE)
-
-MUTUAL FUND sectors (by category):
-- EQUITY_LARGE_CAP → Large Cap
-- EQUITY_MID_CAP → Mid Cap  
-- EQUITY_SMALL_CAP → Small Cap
-- EQUITY_ELSS → Tax Saver (80C)
-- EQUITY_SECTORAL → Thematic/Sectoral
-- EQUITY_FLEXI_CAP → Flexi Cap
-- EQUITY_MULTI_CAP → Multi Cap
-- DEBT → Debt/Bonds
-- HYBRID → Hybrid
-- GOLD → Gold
-- INDEX → Index Fund
-
-Rules:
-1. Use ticker symbol to determine stock sector
-2. Use scheme name/category for MF sector
-3. If uncertain, use "Other"
-4. Gold ETFs/Funds → "Gold"
-5. International Funds → "International"
+STOCK SECTOR RULES (Indian market):
+- Classify the security into its appropriate sector based on its full company name (e.g. "G M BREWERIES LTD" -> "Consumer Defensive", "TATA COMMUNICATIONS LTD" -> "Telecom") and ticker symbol using your general financial knowledge of Indian markets.
+- Do NOT use a hardcoded lookup list of companies. Instead, analyze the semantic meaning of the name (e.g. names containing "Bank" -> "Banking", "Breweries" -> "Consumer Defensive", "Pharm" -> "Pharma", "Motors" -> "Automobile", "Steels" -> "Metals & Mining").
+- Use standard Indian market sectors such as:
+  * Banking
+  * IT
+  * Energy
+  * Pharma
+  * FMCG
+  * Automobile
+  * Metals & Mining
+  * Telecom
+  * Real Estate
+  * Infrastructure
+  * Specialty Chemicals
+  * Financial Services
+  * Defense
+  * Consumer Defensive (including Breweries/Beverages)
+  * Commodity
+  * International
+- Mutual fund sector: Classify based on the asset category mentioned in the scheme name or category (e.g., Large Cap, Mid Cap, Small Cap, ELSS/Tax Saver, Flexi Cap, Multi Cap, Hybrid, Debt, Gold).
+- Do NOT classify a sector as "Unknown" if you can reasonably infer it from the name (e.g. GMBREW is G M Breweries, so it is "Consumer Defensive" or "Beverages").
 
 Return ONLY the sector name, nothing else."""
 
         system_prompt = (
-            "You are an expert financial document parser. Extract the holdings and realized trades "
-            "from the broker statement document. Ensure you capture ISINs, tickers, names, "
-            "quantities, and average prices. Do not invent information. If an ISIN is missing, "
-            "generate a deterministic 12-character placeholder ISIN starting with INE (e.g. INE followed by "
-            "9 alphanumeric characters derived from the ticker/symbol).\n\n"
+            "You are an expert financial document parser specializing in Indian broker statements "
+            "(Groww, Zerodha, Upstox, ICICI Direct, HDFC Securities, Angel One, 5paisa, Motilal Oswal). "
+            "Extract holdings and realized trades with precision.\n\n"
+            "EXTRACTION RULES:\n"
+            "- Extract ALL holdings and trades from the document, even if some fields are missing.\n"
+            "- Use null for any field that is not present or unreadable in the document.\n"
+            "- Do NOT fabricate ISINs, prices, or quantities that are not in the source document. "
+            "If an ISIN is genuinely missing, generate a deterministic 12-character placeholder starting with INE "
+            "(e.g., INE followed by 9 alphanumeric characters derived from the ticker).\n"
+            "- If tables span multiple pages, treat them as a single continuous table.\n"
+            "- If the document contains summary/total rows, use them to cross-validate individual row values.\n"
+            "- Ticker symbols must be UPPERCASE and match NSE/BSE conventions.\n"
+            "- Preserve exact numeric values — do NOT round prices, quantities, or P&L values.\n\n"
             f"{SECTOR_CLASSIFICATION_PROMPT}"
         )
 
         extracted = structured_llm.invoke([
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"Parse the following broker statement:\n\n{full_text}"}
+            {"role": "user", "content": f"Parse the following Indian broker statement. Extract all holdings (active positions) and realized trades (sold/closed positions). Preserve exact values from the document.\n\n{full_text}"}
         ])
 
         holdings = []

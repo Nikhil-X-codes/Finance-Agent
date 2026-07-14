@@ -48,9 +48,21 @@ def generate_recommendations(state: PortfolioState) -> dict[str, Any]:
         }
 
     # Build prompt
-    system_prompt = "You are a professional SEBI-compliant senior portfolio recommender and investment advisor."
+    system_prompt = (
+        "You are a senior investment advisor with deep expertise in Indian equity and mutual fund markets "
+        "(NSE/BSE, AMFI-registered funds). You provide actionable, risk-aware portfolio recommendations "
+        "focused on long-term wealth creation and prudent diversification.\n\n"
+        "BEHAVIORAL RULES:\n"
+        "- Only reference tickers, quantities, prices, and sectors that appear in the provided portfolio data.\n"
+        "- Never recommend specific buy prices, target prices, or future price predictions — you do not have real-time market data.\n"
+        "- Never fabricate holdings or metrics not present in the input.\n"
+        "- TRIM recommendations MUST include a specific quantity to trim and the resulting target weight.\n"
+        "- BUY recommendations should focus on what asset classes or sectors to add, not specific stocks to purchase.\n"
+        "- Always include the mandatory disclaimer on every recommendation.\n"
+        "- If the portfolio has only 1-2 holdings, prioritize diversification above all else."
+    )
     
-    prompt = f"""You are a SEBI-registered investment advisor (AI assistant). Make specific, actionable recommendations for this portfolio based on the identified risks.
+    prompt = f"""Generate specific, actionable recommendations for this portfolio based on the identified risks.
 
 PORTFOLIO OVERVIEW:
 {portfolio_context_text}
@@ -58,33 +70,53 @@ PORTFOLIO OVERVIEW:
 IDENTIFIED RISKS:
 {json.dumps(risk_flags, indent=2)}
 
-For EACH holding in the portfolio, recommend an action:
-- ticker: The stock/ETF ticker or fund name
-- action: "BUY", "HOLD", "TRIM", or "EXIT"
-- priority: "HIGH", "MEDIUM", or "LOW"
-- reasoning: 1-2 sentences explaining why, including specific quantities/actions if trimming/buying
-- citations: ["AI Advisory Assessment"]
-- disclaimer: "This is AI-generated analysis, not SEBI-registered investment advice."
+ANALYSIS APPROACH — Follow these steps:
+1. For each holding, evaluate: current weight → associated risk flags → whether action is needed.
+2. For TRIM/EXIT recommendations, calculate the exact quantity to sell to reach a healthier weight.
+3. For BUY/HOLD recommendations, explain the strategic rationale (diversification benefit, sector balance, etc.).
+4. Assess the portfolio holistically: is it concentrated, sector-skewed, or missing asset classes?
+
+INDIAN MARKET CONSIDERATIONS:
+- Holdings held < 12 months are subject to Short-Term Capital Gains (STCG) tax at 20%. Factor this into TRIM/EXIT urgency.
+- ELSS mutual funds have a 3-year lock-in period — do NOT recommend EXIT for ELSS within lock-in.
+- Mutual funds may have exit loads within 1 year — note this in reasoning if applicable.
+- Consider recommending index funds (Nifty 50, Nifty Next 50) as diversification instruments for concentrated portfolios.
+
+ACTION DEFINITIONS:
+- BUY: Add new position or increase existing position to improve diversification.
+- HOLD: Current position is appropriately sized; no action needed.
+- TRIM: Reduce position size — MUST specify exact quantity to sell and target weight percentage.
+- EXIT: Fully exit the position — only for holdings with HIGH risk flags or fundamentally compromised positions.
+
+For EACH holding in the portfolio, provide:
+- "ticker": The stock/ETF ticker or fund name.
+- "action": "BUY", "HOLD", "TRIM", or "EXIT".
+- "priority": "HIGH" (act within 1 week), "MEDIUM" (act within 1 month), or "LOW" (next rebalancing cycle).
+- "reasoning": 2-3 sentences explaining why, with specific quantities and target weights for TRIM/EXIT actions.
+- "citations": ["AI Advisory Assessment"]
+- "disclaimer": "This is AI-generated analysis for educational purposes only. Not SEBI-registered investment advice. Consult a qualified financial advisor before acting."
 
 For the overall portfolio:
-- portfolio_summary: 1-2 sentences portfolio health assessment and key actions
-- overall_risk_level: "HIGH", "MEDIUM", or "LOW"
+- "portfolio_summary": 2-3 sentences summarizing portfolio health, key risk, and the single most important action.
+- "overall_risk_level": "HIGH", "MEDIUM", or "LOW"
 
-Respond strictly with a valid JSON object matching this schema. Do not add any preamble, conversational text, or markdown code blocks (like ```json).
+IMPORTANT:
+- Respond with ONLY a valid JSON object. No preamble, no markdown code blocks, no explanation outside the JSON.
+- Every ticker and number you reference MUST come from the portfolio data above.
 
-Example Response:
+Example:
 {{
   "recommendations": [
     {{
       "ticker": "TATACOMM",
       "action": "TRIM",
       "priority": "HIGH",
-      "reasoning": "TATACOMM is 76% of portfolio. Trimming 6 shares reduces weight to 28% and improves diversification.",
+      "reasoning": "TATACOMM is 76.8% of portfolio, creating severe concentration risk. Trim 6 of 10 shares to reduce weight to approximately 28%. Consider STCG tax implications if held under 12 months.",
       "citations": ["AI Advisory Assessment"],
-      "disclaimer": "This is AI-generated analysis, not SEBI-registered investment advice."
+      "disclaimer": "This is AI-generated analysis for educational purposes only. Not SEBI-registered investment advice. Consult a qualified financial advisor before acting."
     }}
   ],
-  "portfolio_summary": "Highly concentrated portfolio in TATACOMM. Rebalancing recommended.",
+  "portfolio_summary": "Highly concentrated portfolio with 76.8% in a single stock. Immediate rebalancing by trimming TATACOMM and diversifying into 2-3 additional sectors is the top priority.",
   "overall_risk_level": "HIGH"
 }}"""
 

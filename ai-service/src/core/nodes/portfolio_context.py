@@ -9,14 +9,16 @@ from ..state import PortfolioState
 
 async def build_portfolio_context(state: PortfolioState) -> dict[str, Any]:
     """Build rich text context from portfolio holdings for LLM reasoning."""
-    holdings = state.get("normalized_holdings") or []
+    holdings = state.get("normalized_holdings") or state.get("raw_holdings") or []
     enriched = state.get("enriched_holdings") or []
     errors: list[dict[str, str]] = list(state.get("errors") or [])
 
     if not holdings and not enriched:
         return {
             "portfolio_context_text": "No portfolio holdings available.",
+            "qa_context_text": "No portfolio holdings available.",
             "portfolio_summary": {},
+            "target_holdings": [],
             "errors": errors,
             "current_node": "portfolio_context"
         }
@@ -24,19 +26,25 @@ async def build_portfolio_context(state: PortfolioState) -> dict[str, Any]:
     # Use enriched if available, else raw holdings
     source = enriched if enriched else [
         {
-            "ticker": h.ticker,
-            "name": h.name,
-            "quantity": h.quantity,
-            "avg_buy_price": h.avg_buy_price,
-            "asset_type": h.asset_type,
-            "sector": h.sector or "Unknown",
-            "current_price": h.avg_buy_price,  # fallback
-            "status": h.status or "UNREALIZED",
-            "sell_price": h.sell_price,
-            "realized_pnl": h.realized_pnl,
+            "ticker": h.get("ticker", "") if isinstance(h, dict) else h.ticker,
+            "name": h.get("name", h.get("ticker", "")) if isinstance(h, dict) else h.name,
+            "quantity": float(h.get("quantity") or 0) if isinstance(h, dict) else h.quantity,
+            "avg_buy_price": float(h.get("avg_buy_price") or h.get("avgBuyPrice") or 0) if isinstance(h, dict) else h.avg_buy_price,
+            "asset_type": h.get("asset_type", "STOCK") if isinstance(h, dict) else h.asset_type,
+            "sector": h.get("sector") or "Unknown" if isinstance(h, dict) else (h.sector or "Unknown"),
+            "current_price": float(h.get("current_price") or h.get("avg_buy_price") or h.get("avgBuyPrice") or 0) if isinstance(h, dict) else (h.current_price or h.avg_buy_price),
+            "status": h.get("status") or "UNREALIZED" if isinstance(h, dict) else (h.status or "UNREALIZED"),
+            "sell_price": h.get("sell_price") if isinstance(h, dict) else h.sell_price,
+            "realized_pnl": h.get("realized_pnl") if isinstance(h, dict) else h.realized_pnl,
         }
         for h in holdings
     ]
+
+    # Clean ticker names and format items consistently
+    for item in source:
+        item["ticker"] = str(item.get("ticker") or "").strip().upper()
+        item["name"] = str(item.get("name") or item.get("ticker") or "").strip()
+        item["status"] = str(item.get("status") or "UNREALIZED").upper()
 
     # Separate current active holdings vs. realized (sold) trades
     current_holdings = [item for item in source if item.get("status") != "REALIZED" and item.get("quantity", 0) > 0]
@@ -74,7 +82,7 @@ async def build_portfolio_context(state: PortfolioState) -> dict[str, Any]:
         pnl_pct = ((current - avg) / avg * 100) if avg > 0 else 0
         
         stock_lines.append(
-            f"- {ticker} ({name}): {qty} shares, avg ₹{avg:.2f}, current ₹{current:.2f}, "
+            f"- {ticker} ({name}): {qty:.0f} shares, avg ₹{avg:.2f}, current ₹{current:.2f}, "
             f"weight {weight:.1f}%, P&L ₹{pnl:,.2f} ({pnl_pct:+.1f}%)"
         )
 
@@ -85,12 +93,14 @@ async def build_portfolio_context(state: PortfolioState) -> dict[str, Any]:
         name = item.get("name", ticker)
         qty = item.get("quantity", 0)
         avg = item.get("avg_buy_price", 0)
-        sell = item.get("sell_price", 0)
-        pnl = item.get("realized_pnl", (sell - avg) * qty)
+        sell = item.get("sell_price", 0) or 0.0
+        pnl = item.get("realized_pnl")
+        if pnl is None:
+            pnl = (sell - avg) * qty
         pnl_pct = ((sell - avg) / avg * 100) if avg > 0 else 0
         
         realized_lines.append(
-            f"- {ticker} ({name}): Sold {qty} shares, avg buy ₹{avg:.2f}, sold ₹{sell:.2f}, Realized P&L ₹{pnl:,.2f} ({pnl_pct:+.1f}%)"
+            f"- {ticker} ({name}): Sold {qty:.0f} shares, avg buy ₹{avg:.2f}, sold ₹{sell:.2f}, Realized P&L ₹{pnl:,.2f} ({pnl_pct:+.1f}%)"
         )
 
     # Concentration Analysis
@@ -109,7 +119,7 @@ async def build_portfolio_context(state: PortfolioState) -> dict[str, Any]:
 Total Invested (Active): ₹{total_value:,.2f}
 Current Value (Active): ₹{total_value:,.2f}
 Unrealized P&L: ₹0.00
-Realized P&L (Locked-in): ₹{sum(t.get('realized_pnl', 0.0) for t in realized_trades):,.2f}
+Realized P&L (Locked-in): ₹{sum(t.get('realized_pnl') or 0.0 for t in realized_trades):,.2f}
 
 SECTOR ALLOCATION (Active Holdings):
 {chr(10).join(f"- {sector}: ₹{val:,.2f} ({(val / total_value * 100) if total_value > 0 else 0:.1f}%)" for sector, val in sorted(sector_weights.items(), key=lambda x: x[1], reverse=True))}
@@ -126,8 +136,22 @@ CONCENTRATION ANALYSIS (Active Holdings):
 - Concentration Level: {concentration_level}
 """
 
+    # Scan user question to identify target holdings for Q&A route
+    question = state.get("question", "").lower()
+    mentioned_tickers = []
+    if question:
+        for item in source:
+            ticker = item.get("ticker", "").lower()
+            name = item.get("name", "").lower()
+            if ticker in question or name in question:
+                mentioned_tickers.append(item.get("ticker"))
+
+    # Fallback to all active tickers if none mentioned specifically
+    target_holdings = mentioned_tickers if mentioned_tickers else [h.get("ticker") for h in current_holdings]
+
     return {
         "portfolio_context_text": context_text,
+        "qa_context_text": context_text,
         "portfolio_summary": {
             "total_invested": total_value,
             "total_current": total_value,
@@ -135,6 +159,7 @@ CONCENTRATION ANALYSIS (Active Holdings):
             "holding_count": len(current_holdings),
             "concentration_level": concentration_level
         },
+        "target_holdings": target_holdings,
         "errors": errors,
         "current_node": "portfolio_context"
     }

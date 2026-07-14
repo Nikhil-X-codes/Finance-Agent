@@ -13,7 +13,6 @@ from ..config.settings import settings
 from ..core.rate_limit import limiter
 from ..services.cache_service import cache_service
 from .routes import router
-from .routes.rag import router as rag_router
 from ..middleware.internal_api_key import InternalApiKeyMiddleware
 
 
@@ -37,7 +36,7 @@ async def lifespan(app: FastAPI):
         print(f"Cache init failed: {e}")
 
     # 2. Eager load LLMService
-    print("\n[1/3] Loading Groq LLM...")
+    print("\n[1/2] Loading Groq LLM...")
     try:
         from ..services.llm_service import LLMService
         llm = LLMService.get_instance()
@@ -46,34 +45,20 @@ async def lifespan(app: FastAPI):
         print(f"LLMService failed: {e}")
         print("Server starting without initialized LLMService.")
 
-    # 3. Eager load EmbeddingService (HuggingFace/SentenceTransformer)
-    print("\n[2/3] Loading EmbeddingService (BAAI/bge-small-en)...")
-    print("   This may take some time on the first run (downloads model)...")
+    # 3. Eager load EmbeddingService (SentenceTransformer)
+    print("\n[2/2] Loading SentenceTransformer Embeddings...")
     try:
         from ..services.embedding_service import get_embedding_service
-        embed_service = get_embedding_service(
+        get_embedding_service(
             model_name=settings.embedding_model_name,
-            cache_folder=settings.embedding_cache_folder,
+            cache_folder=settings.embedding_cache_folder
         )
-        # Warm-up the model by embedding a small query
-        await embed_service.embed("warmup")
-        print("EmbeddingService loaded and warmed up successfully.")
+        print("SentenceTransformer Embeddings loaded successfully!")
     except Exception as e:
-        print(f"EmbeddingService failed: {e}")
-        raise RuntimeError("Cannot start without EmbeddingService") from e
+        print(f"EmbeddingService failed to load: {e}")
+        print("Server starting without pre-loaded EmbeddingService.")
 
-    # 4. Eager load RAGService
-    print("\n[3/3] Loading RAGService vector store...")
-    try:
-        from ..services.rag_service import RAGService
-        rag = RAGService.get_instance(
-            index_path=settings.faiss_index_path,
-            metadata_path=settings.faiss_metadata_path,
-        )
-        print("RAGService index and metadata loaded successfully.")
-    except Exception as e:
-        print(f"RAGService failed to initialize at startup: {e}")
-        print("   RAGService will attempt lazy initialization on first request.")
+
 
     print("\n" + "=" * 60)
     print("ALL MODELS LOADED — Server ready for requests")
@@ -96,7 +81,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(router)
-app.include_router(rag_router)
 
 
 @app.get("/health")

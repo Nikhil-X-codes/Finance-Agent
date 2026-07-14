@@ -49,19 +49,8 @@ export default function RegisterPage() {
         throw new Error(errJson.message || errJson.error || "Registration failed");
       }
 
-      // 2. Automatically log in after registration
-      const loginRes = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
-
-      if (!loginRes.ok) {
-        throw new Error("Registration complete, but auto-login failed. Please sign in manually.");
-      }
-
-      // 3. Successful login -> redirect to home page
-      router.push("/");
+      // 2. Redirect to login page instead of auto-logging in
+      router.push("/login?registered=true");
       router.refresh();
     } catch (err) {
       setError(err.message);

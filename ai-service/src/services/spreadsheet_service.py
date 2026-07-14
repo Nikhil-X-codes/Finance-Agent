@@ -39,57 +39,94 @@ class UniversalParser:
             raise ValueError("Could not extract any content from file")
 
         # Stage 2: LLM parses as plain text (NO structured output)
-        system_prompt = """You are a universal financial statement parser. Parse ANY broker's statement.
+        system_prompt = """You are an expert financial document parser specializing in Indian broker statements (Groww, Zerodha, Upstox, ICICI Direct, HDFC Securities, Angel One, 5paisa, Motilal Oswal).
 
-Your task: Read the tables and classify each data row as HOLDING or REALIZED_TRADE.
+Your task: Read the extracted tables and classify each data row as HOLDING, REALIZED_TRADE, or SKIP.
 
-CLASSIFICATION RULES:
-- HOLDING: Current position. Has quantity > 0, current/closing/LTP price, NO sell date.
-- REALIZED_TRADE: Sold position. Has sell date, sell price, or realized P&L.
-- SKIP: Header rows, summary rows, total rows, charge rows, empty rows.
+CLASSIFICATION RULES (follow strictly):
+- HOLDING: Active position the investor currently owns. Indicators: quantity > 0, has current/closing/LTP price, NO sell date, NO sell price, status may say "Active" or "Open".
+- REALIZED_TRADE: Position that has been sold/closed. Indicators: has sell date OR sell price OR realized P&L value, status may say "Sold", "Closed", "Executed", or "Completed".
+- SKIP: Header rows, summary/total rows, charge/brokerage rows, empty rows, disclaimer text, footer rows.
+
+DISAMBIGUATION (when a row could be either):
+- If a row has BOTH a buy price AND a sell price → REALIZED_TRADE.
+- If a row has quantity > 0 but NO sell price and NO sell date → HOLDING.
+- If a row has quantity = 0 → SKIP (unless it has realized P&L, then REALIZED_TRADE with the original quantity).
+- If the same ticker appears in multiple rows (different trade dates), keep them as SEPARATE rows — do NOT aggregate.
+
+BROKER-SPECIFIC NOTES:
+- Groww: Often shows trade-by-trade rows. "LTP" column = current price for holdings. "P&L" column = realized P&L for sold trades.
+- Zerodha/Kite: Uses "Avg. cost" for buy price, "LTP" for current price. "P&L" = unrealized for holdings.
+- Upstox: May use "Buy Avg" and "Sell Avg" columns. Presence of "Sell Avg" > 0 means REALIZED_TRADE.
+- ICICI Direct/HDFC: May show ISIN in a separate column. "Net Qty" = current quantity.
 
 For each valid row, output a JSON object with these exact fields:
 {
   "row_type": "HOLDING" or "REALIZED_TRADE",
-  "ticker": "stock ticker or fund code",
-  "name": "full company/fund name",
-  "isin": "ISIN if present, else empty string",
-  "quantity": number,
-  "buy_price": number,
-  "sell_price": number or null,
-  "buy_date": "YYYY-MM-DD" or null,
-  "sell_date": "YYYY-MM-DD" or null,
-  "realized_pnl": number or null,
-  "current_price": number or null,
+  "ticker": "stock ticker or fund code (NSE symbol preferred, uppercase)",
+  "name": "full company/fund name exactly as shown in the document",
+  "isin": "ISIN if present in the data, else empty string — do NOT fabricate ISINs",
+  "quantity": number (must be > 0),
+  "buy_price": number (average buy price, must be >= 0),
+  "sell_price": number or null (only for REALIZED_TRADE),
+  "buy_date": "YYYY-MM-DD" or null (extract from document if present),
+  "sell_date": "YYYY-MM-DD" or null (only for REALIZED_TRADE),
+  "realized_pnl": number or null (only for REALIZED_TRADE — use value from document, or calculate as (sell_price - buy_price) * quantity),
+  "current_price": number or null (only for HOLDING — LTP/current/closing price),
   "asset_type": "STOCK" or "ETF" or "MUTUAL_FUND" or "BOND",
-  "sector": "sector name or Unknown"
+  "sector": "sector name"
 }
 
-SECTOR RULES:
-- Banks -> Banking
-- IT/Tech companies -> IT
-- Reliance, ONGC -> Energy
-- Tata Motors, Maruti -> Automobile
-- Silver/Gold funds -> Commodity
-- Pharma -> Pharma
-- FMCG -> FMCG
-- Telecom -> Telecom
-- Breweries/Liquor -> Consumer Defensive
-- Mutual funds with INF ISIN -> check name for category
+ASSET TYPE RULES:
+- ISIN starting with "INF" → MUTUAL_FUND
+- Name contains "ETF", "BeES", "Nifty ETF", "Gold ETF" → ETF
+- Name contains "Bond", "Debenture", "NCD" → BOND
+- Everything else on NSE/BSE → STOCK
+
+SECTOR CLASSIFICATION RULES (Indian market):
+- Classify the security into its appropriate sector based on its full company name (e.g. "G M BREWERIES LTD" -> "Consumer Defensive", "TATA COMMUNICATIONS LTD" -> "Telecom") and ticker symbol using your general financial knowledge of Indian markets.
+- Do NOT use a hardcoded lookup list of companies. Instead, analyze the semantic meaning of the name (e.g. names containing "Bank" -> "Banking", "Breweries" -> "Consumer Defensive", "Pharm" -> "Pharma", "Motors" -> "Automobile", "Steels" -> "Metals & Mining").
+- Use standard Indian market sectors such as:
+  * Banking
+  * IT
+  * Energy
+  * Pharma
+  * FMCG
+  * Automobile
+  * Metals & Mining
+  * Telecom
+  * Real Estate
+  * Infrastructure
+  * Specialty Chemicals
+  * Financial Services
+  * Defense
+  * Consumer Defensive (including Breweries/Beverages)
+  * Commodity
+  * International
+- Mutual fund sector: Classify based on the asset category mentioned in the scheme name or category (e.g., Large Cap, Mid Cap, Small Cap, ELSS/Tax Saver, Flexi Cap, Multi Cap, Hybrid, Debt, Gold).
+- Do NOT classify a sector as "Unknown" if you can reasonably infer it from the name (e.g. GMBREW is G M Breweries, so it is "Consumer Defensive" or "Beverages").
+
+DATA INTEGRITY RULES:
+- Preserve exact numeric values from the source document — do NOT round prices or quantities.
+- If a field is missing or unreadable, use null — do NOT guess or fabricate values.
+- Ticker symbols must be UPPERCASE and match NSE/BSE conventions.
 
 OUTPUT FORMAT:
-Return ONLY a JSON array. No markdown, no explanation, no code blocks.
+Return ONLY a JSON array. No markdown, no explanation, no code blocks, no preamble.
 Example:
 [
   {"row_type":"REALIZED_TRADE","ticker":"TATACOMM","name":"TATA COMMUNICATIONS LTD","isin":"INE151A01013","quantity":1,"buy_price":1850,"sell_price":1920,"buy_date":"2025-10-23","sell_date":"2025-11-04","realized_pnl":70,"current_price":null,"asset_type":"STOCK","sector":"Telecom"},
   {"row_type":"HOLDING","ticker":"GMBREW","name":"G M BREWERIES LTD","isin":"INE075D01018","quantity":1,"buy_price":1240,"sell_price":null,"buy_date":"2025-10-27","sell_date":null,"realized_pnl":null,"current_price":982.45,"asset_type":"STOCK","sector":"Consumer Defensive"}
 ]"""
 
-        user_prompt = f"""Parse these tables from a broker statement.
+        user_prompt = f"""Parse the following tables extracted from an Indian broker statement. Classify each row as HOLDING, REALIZED_TRADE, or SKIP.
 
 {tables_text}
 
-Return ONLY the JSON array of classified rows. Detect broker name if possible."""
+IMPORTANT:
+- Return ONLY the JSON array of classified rows.
+- Preserve all numeric values exactly as they appear in the source data.
+- If the same stock appears in multiple rows (different trades), keep them as separate entries."""
 
         # Call LLM as plain text (NO structured output)
         response = self.llm.invoke([

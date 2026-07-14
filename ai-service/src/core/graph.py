@@ -4,13 +4,12 @@ from langchain_core.tracers import LangChainTracer
 from langgraph.graph import END, START, StateGraph
 
 from src.config.settings import settings
-from src.core.edges.conditions import route_recommender
+from src.core.edges.conditions import route_recommender, route_portfolio_context
 from src.core.edges.router import route_request
 from src.core.nodes.enricher import enrich_portfolio
 from src.core.nodes.output import format_output
 from src.core.nodes.parser import parse_holdings
 from src.core.nodes.qa_generator import generate_qa_response
-from src.core.nodes.qa_portfolio_context import build_qa_portfolio_context
 from src.core.nodes.portfolio_context import build_portfolio_context
 from src.core.nodes.recommender import generate_recommendations
 from src.core.nodes.risk_analyzer import analyze_portfolio_risk
@@ -32,8 +31,6 @@ def create_agent_graph() -> StateGraph:
     workflow.add_node("risk_analyzer", analyze_portfolio_risk)
     workflow.add_node("recommender", generate_recommendations)
     workflow.add_node("output", format_output)
-    
-    workflow.add_node("qa_portfolio_context", build_qa_portfolio_context)
     workflow.add_node("qa_generator", generate_qa_response)
     workflow.add_node("trade_validator", validate_trade)
 
@@ -43,7 +40,7 @@ def create_agent_graph() -> StateGraph:
         route_request,
         {
             "parser": "parser",
-            "qa_retriever": "qa_portfolio_context",
+            "qa_retriever": "portfolio_context",
             "trade_validator": "trade_validator"
         }
     )
@@ -51,7 +48,16 @@ def create_agent_graph() -> StateGraph:
     # 3. Add report subgraph edges
     workflow.add_edge("parser", "enricher")
     workflow.add_edge("enricher", "portfolio_context")
-    workflow.add_edge("portfolio_context", "risk_analyzer")
+    
+    # Conditional route after portfolio context to branch for QA vs Report
+    workflow.add_conditional_edges(
+        "portfolio_context",
+        route_portfolio_context,
+        {
+            "qa_generator": "qa_generator",
+            "risk_analyzer": "risk_analyzer"
+        }
+    )
     
     # Conditional route after risk analysis (skip recommender on empty portfolio / critical errors)
     workflow.add_conditional_edges(
@@ -67,7 +73,6 @@ def create_agent_graph() -> StateGraph:
     workflow.add_edge("output", END)
 
     # 4. Add Q&A subgraph edges
-    workflow.add_edge("qa_portfolio_context", "qa_generator")
     workflow.add_edge("qa_generator", END)
 
     # 5. Add Trade Validation edges

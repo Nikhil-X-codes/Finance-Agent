@@ -265,11 +265,11 @@ export default function QAPage() {
               {msg.role === "assistant" && !msg.streaming && msg.questionType && (
                 <div className="mt-1 flex gap-1.5 pl-1">
                   <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold border ${
-                    msg.questionType === "portfolio"
+                    (msg.questionType === "portfolio" || msg.questionType === "portfolio_rag")
                       ? "bg-sky-500/10 text-sky-400 border-sky-500/20"
                       : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
                   }`}>
-                    {msg.questionType === "portfolio" ? "📊 Portfolio Query" : "📚 General Finance"}
+                    {(msg.questionType === "portfolio" || msg.questionType === "portfolio_rag") ? "📊 Portfolio Query" : "📚 General Finance"}
                   </span>
                 </div>
               )}

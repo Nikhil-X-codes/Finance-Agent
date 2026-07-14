@@ -97,6 +97,8 @@ class Settings:
     langsmith_project: str = os.getenv("LANGSMITH_PROJECT", "Agent")
     langsmith_endpoint: str = os.getenv("LANGSMITH_ENDPOINT", "https://api.smith.langchain.com")
     hf_token: str = os.getenv("HF_TOKEN", "")
+    cors_allowed_origins: str = os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:3001")
+    cors_allowed_origin_regex: str = os.getenv("CORS_ALLOWED_ORIGIN_REGEX", "https://.*\\.vercel\\.app|https://.*\\.onrender\\.com")
 
 
 settings = Settings()

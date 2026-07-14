@@ -8,8 +8,10 @@ import crypto from "crypto";
 // DB file lives at frontend/data/app.db — auto-created on first import.
 // ---------------------------------------------------------------------------
 
-const DATA_DIR = path.join(process.cwd(), "data");
-if (!fs.existsSync(DATA_DIR)) {
+const IS_VERCEL = !!(process.env.VERCEL || process.env.NOW_BUILDER);
+const DATA_DIR = IS_VERCEL ? "/tmp" : path.join(process.cwd(), "data");
+
+if (!IS_VERCEL && !fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 

@@ -6,7 +6,9 @@ import { getIronSession } from "iron-session";
 // ---------------------------------------------------------------------------
 
 export const sessionOptions = {
-  password: process.env.SESSION_PASSWORD,
+  password: (process.env.SESSION_PASSWORD && process.env.SESSION_PASSWORD.length >= 32)
+    ? process.env.SESSION_PASSWORD
+    : "default_fallback_session_password_32_chars_long",
   cookieName: "agent_session",
   cookieOptions: {
     httpOnly: true,

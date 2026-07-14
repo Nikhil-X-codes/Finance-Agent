@@ -6,8 +6,6 @@ pydantic>=2.8.0
 pydantic-settings>=2.5.0
 httpx>=0.27.0
 numpy>=1.26.0
-sentence-transformers>=3.0.0
-faiss-cpu>=1.8.0
 groq>=0.9.0
 pypdf>=4.3.0
 langchain>=0.2.0
@@ -18,5 +16,3 @@ aiosqlite>=0.20.0
 python-multipart>=0.0.9
 langgraph-checkpoint-sqlite>=2.0.0
 langsmith>=0.1.0
-
-

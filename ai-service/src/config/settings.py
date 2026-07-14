@@ -5,8 +5,6 @@ Documented environment variables:
 - INTERNAL_API_KEY: Shared secret used by Next.js when proxying requests.
 - NEWSAPI_KEY: Optional NewsAPI key for primary news fetches.
 - SQLITE_PATH: Path to the AI service SQLite database.
-- FAISS_INDEX_PATH: Path to the FAISS index file.
-- FAISS_METADATA_PATH: Optional JSON metadata file for FAISS chunks.
 - EMBEDDING_MODEL_NAME: Sentence transformer model name.
 - EMBEDDING_CACHE_FOLDER: Cache directory for the embedding model.
 - GROQ_MODEL: Groq chat model used by the LLM service.
@@ -65,8 +63,6 @@ class Settings:
     internal_api_key: str = os.getenv("INTERNAL_API_KEY", "")
     newsapi_key: str = os.getenv("NEWSAPI_KEY", "")
     sqlite_path: str = os.getenv("SQLITE_PATH", "./data/cache/portfolio.db")
-    faiss_index_path: str = os.getenv("FAISS_INDEX_PATH", "./data/vector_store/faiss.index")
-    faiss_metadata_path: str = os.getenv("FAISS_METADATA_PATH", "./data/vector_store/meta.json")
     embedding_model_name: str = os.getenv("EMBEDDING_MODEL_NAME", "BAAI/bge-small-en")
     embedding_cache_folder: str = os.getenv("EMBEDDING_CACHE_FOLDER", "./data/model_cache")
     groq_model: str = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
@@ -100,6 +96,7 @@ class Settings:
     langsmith_api_key: str = os.getenv("LANGSMITH_API_KEY", "")
     langsmith_project: str = os.getenv("LANGSMITH_PROJECT", "Agent")
     langsmith_endpoint: str = os.getenv("LANGSMITH_ENDPOINT", "https://api.smith.langchain.com")
+    hf_token: str = os.getenv("HF_TOKEN", "")
 
 
 settings = Settings()

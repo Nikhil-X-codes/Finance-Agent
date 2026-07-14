@@ -87,6 +87,10 @@ def create_agent_graph() -> StateGraph:
     from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
     async def make_saver():
+        import os
+        db_dir = os.path.dirname(settings.sqlite_path)
+        if db_dir:
+            os.makedirs(db_dir, exist_ok=True)
         conn = aiosqlite.connect(settings.sqlite_path, check_same_thread=False)
         await conn.__aenter__()
         return AsyncSqliteSaver(conn)

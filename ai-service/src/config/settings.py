@@ -65,7 +65,7 @@ class Settings:
     sqlite_path: str = os.getenv("SQLITE_PATH", "./data/cache/portfolio.db")
     embedding_model_name: str = os.getenv("EMBEDDING_MODEL_NAME", "BAAI/bge-small-en")
     embedding_cache_folder: str = os.getenv("EMBEDDING_CACHE_FOLDER", "./data/model_cache")
-    groq_model: str = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
+    groq_model: str = os.getenv("GROQ_MODEL", "openai/gpt-oss-20b")
     max_memory_mb: int = _int_env("MAX_MEMORY_MB", MAX_MEMORY_MB)
     report_rate_limit_per_minute: int = _int_env(
         "REPORT_RATE_LIMIT_PER_MINUTE", REPORT_RATE_LIMIT_PER_MINUTE

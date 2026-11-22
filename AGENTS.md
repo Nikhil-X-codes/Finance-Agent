@@ -52,6 +52,8 @@ Offline Ragas suite -> same Q&A graph with synthetic cases and reference answers
 
 **Verification status** — Applied both migrations to local Postgres and hosted Supabase. Verified the SQLite import against the hosted target. Next.js verified the Session pooler hostname and CA over TLS. Local tests also verified imported sign-in and persistence across a Postgres restart.
 
+**Render deployment** — FastAPI reports a missing configured CA before opening the connection pool when TLS verification is enabled. The README documents the Render Secret File path. The missing-CA regression passed, 34 backend tests passed, and the restart test skipped because a disposable test database was unavailable. A local FastAPI startup against the hosted Supabase Session pooler returned HTTP 200 from `/health` with `sslmode=verify-full`. Live Render verification requires updating the service’s environment.
+
 ## Phase 3 — Make portfolio accounting and statement imports consistent
 
 - Validate parsed PDF and spreadsheet rows before showing the preview. Preserve statement coverage dates, recognized and unrecognized rows, ticker or ISIN, and any imported realized trades. Make confirmation safe to retry. Verify each advertised file format using fixtures.
@@ -100,6 +102,8 @@ FastAPI -> workflow by authenticated route
 **Exit checks** — The evaluator reads fixture cases, runs the graph, prints per-case and aggregate results, and returns a failing exit status when configured gates fail. CI can run the deterministic checks without provider credentials.
 
 **Verification status** — All 12 versioned cases pass deterministic routing and evidence checks. Combining successful live results across runs passed the three retrieval thresholds, with eight factual-correctness scores averaging 0.77. The missing-price case passed all four metrics. The full live command still exited with a failure after judge timeouts. A retry scored the mixed-price case, while the latest intent-switch retry hit the judge provider’s rate limit. The combined results use the successful earlier score for that case. Live CI continues to fail when judge errors leave a case unscored.
+
+**Fixture v2** — The default suite now includes 50 synthetic cases. All 50 passed in deterministic mode, including 35 answered outcomes, 12 unavailable outcomes, and three clarification outcomes. The README chart and per-case results are generated from this run. Fixture v1 and its thresholds remain available for reproducing the earlier results.
 
 ## Phase 6 — Integrate NSE data and retire superseded code
 

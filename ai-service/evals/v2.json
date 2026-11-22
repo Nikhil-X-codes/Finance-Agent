@@ -1,0 +1,1084 @@
+{
+  "version": 2,
+  "portfolios": {
+    "sample": [
+      {
+        "ticker": "TCS",
+        "name": "Tata Consultancy Services",
+        "quantity": 4.25,
+        "avg_buy_price": 100,
+        "invested_cost": 425,
+        "market_value": 510,
+        "current_price": 120,
+        "price_as_of": "2025-04-01",
+        "price_source": "STATEMENT",
+        "status": "UNREALIZED"
+      },
+      {
+        "ticker": "INFY",
+        "name": "Infosys",
+        "quantity": 2,
+        "avg_buy_price": 200,
+        "invested_cost": 400,
+        "status": "UNREALIZED",
+        "current_price": null
+      }
+    ],
+    "empty": [],
+    "fully_priced": [
+      {
+        "ticker": "TCS",
+        "name": "TCS",
+        "quantity": 3,
+        "avg_buy_price": 100,
+        "current_price": 125,
+        "status": "UNREALIZED",
+        "price_source": "STATEMENT",
+        "price_as_of": "2025-04-01",
+        "sector": "Technology",
+        "isin": "INE467B01029"
+      },
+      {
+        "ticker": "SBIN",
+        "name": "SBIN",
+        "quantity": 5,
+        "avg_buy_price": 80,
+        "current_price": 70,
+        "status": "UNREALIZED",
+        "price_source": "STATEMENT",
+        "price_as_of": "2025-04-01",
+        "sector": "Financial Services"
+      }
+    ],
+    "reopened": [
+      {
+        "ticker": "TCS",
+        "name": "TCS",
+        "quantity": 4,
+        "avg_buy_price": 90,
+        "sell_price": 100,
+        "realized_pnl": 40,
+        "sell_date": "2025-03-20",
+        "status": "REALIZED"
+      },
+      {
+        "ticker": "TCS",
+        "name": "TCS",
+        "quantity": 1.5,
+        "avg_buy_price": 110,
+        "current_price": 120,
+        "status": "UNREALIZED",
+        "price_source": "STATEMENT",
+        "price_as_of": "2025-04-01"
+      }
+    ],
+    "closed_only": [
+      {
+        "ticker": "INFY",
+        "name": "INFY",
+        "quantity": 2,
+        "avg_buy_price": 200,
+        "sell_price": 230,
+        "realized_pnl": 60,
+        "sell_date": "2025-03-31",
+        "status": "REALIZED"
+      }
+    ],
+    "duplicate_lots": [
+      {
+        "ticker": "TCS",
+        "name": "TCS",
+        "quantity": 1,
+        "avg_buy_price": 100,
+        "current_price": 120,
+        "status": "UNREALIZED",
+        "price_source": "STATEMENT",
+        "price_as_of": "2025-04-01"
+      },
+      {
+        "ticker": "TCS",
+        "name": "TCS",
+        "quantity": 2,
+        "avg_buy_price": 105,
+        "current_price": 120,
+        "status": "UNREALIZED",
+        "price_source": "STATEMENT",
+        "price_as_of": "2025-04-01"
+      }
+    ],
+    "other_account": [
+      {
+        "ticker": "TCS",
+        "name": "TCS",
+        "quantity": 7.75,
+        "avg_buy_price": 90,
+        "current_price": 110,
+        "status": "UNREALIZED",
+        "price_source": "STATEMENT",
+        "price_as_of": "2025-04-01"
+      }
+    ],
+    "mixed_assets": [
+      {
+        "ticker": "NIFTYBEES",
+        "name": "NIFTYBEES",
+        "quantity": 2.5,
+        "avg_buy_price": 100,
+        "current_price": 110,
+        "status": "UNREALIZED",
+        "price_source": "STATEMENT",
+        "price_as_of": "2025-04-01",
+        "asset_type": "ETF"
+      },
+      {
+        "ticker": "FUND01",
+        "name": "FUND01",
+        "quantity": 10,
+        "avg_buy_price": 20,
+        "current_price": 23,
+        "status": "UNREALIZED",
+        "price_source": "STATEMENT",
+        "price_as_of": "2025-04-01",
+        "asset_type": "MUTUAL_FUND"
+      }
+    ],
+    "partial_sale": [
+      {
+        "ticker": "SBIN",
+        "name": "SBIN",
+        "quantity": 6,
+        "avg_buy_price": 100,
+        "current_price": 105,
+        "status": "UNREALIZED",
+        "price_source": "STATEMENT",
+        "price_as_of": "2025-04-01"
+      },
+      {
+        "ticker": "SBIN",
+        "name": "SBIN",
+        "quantity": 4,
+        "avg_buy_price": 100,
+        "sell_price": 120,
+        "realized_pnl": 80,
+        "sell_date": "2025-04-01",
+        "status": "REALIZED"
+      }
+    ],
+    "missing_realized": [
+      {
+        "ticker": "SBIN",
+        "name": "SBIN",
+        "quantity": 4,
+        "avg_buy_price": 100,
+        "sell_price": null,
+        "realized_pnl": null,
+        "sell_date": "2025-04-01",
+        "status": "REALIZED"
+      }
+    ]
+  },
+  "quotes": {
+    "TCS:latest": {
+      "current_price": 125,
+      "timestamp": "2025-04-02T15:30:00+05:30",
+      "source": "Synthetic NSE quote",
+      "currency": "INR",
+      "fresh": true
+    },
+    "TCS:2025-04-01": {
+      "current_price": 115,
+      "timestamp": "2025-04-01",
+      "source": "Synthetic NSE closing price",
+      "currency": "INR",
+      "fresh": false
+    },
+    "INFY:latest": {
+      "current_price": 242,
+      "timestamp": "2025-04-02T15:30:00+05:30",
+      "source": "Synthetic market feed",
+      "currency": "INR",
+      "fresh": true
+    },
+    "SBIN:latest": {
+      "current_price": 81.75,
+      "timestamp": "2025-04-01T15:30:00+05:30",
+      "source": "Synthetic market feed",
+      "currency": "INR",
+      "fresh": false
+    },
+    "RELIANCE:latest": {
+      "current_price": 140.5,
+      "timestamp": "2025-04-02T15:30:00+05:30",
+      "source": "Synthetic market feed",
+      "currency": "INR",
+      "fresh": true
+    },
+    "HDFCBANK:latest": {
+      "current_price": 161,
+      "timestamp": "2025-04-02T15:30:00+05:30",
+      "source": "Synthetic market feed",
+      "currency": "INR",
+      "fresh": true
+    },
+    "NIFTYBEES:latest": {
+      "current_price": 112.75,
+      "timestamp": "2025-04-02T15:30:00+05:30",
+      "source": "Synthetic market feed",
+      "currency": "INR",
+      "fresh": true
+    },
+    "INFY:2025-04-01": {
+      "current_price": 238,
+      "timestamp": "2025-04-01",
+      "source": "Synthetic market feed",
+      "currency": "INR",
+      "fresh": false
+    },
+    "SBIN:2025-04-01": {
+      "current_price": 80.5,
+      "timestamp": "2025-04-01",
+      "source": "Synthetic market feed",
+      "currency": "INR",
+      "fresh": false
+    },
+    "TCS:2025-04-05": {
+      "current_price": 117,
+      "timestamp": "2025-04-04",
+      "source": "Synthetic market feed",
+      "currency": "INR",
+      "fresh": false
+    },
+    "WIPRO:latest": {
+      "current_price": 0,
+      "timestamp": "2025-04-02T15:30:00+05:30",
+      "source": "Synthetic market feed",
+      "currency": "INR",
+      "fresh": true
+    },
+    "ITC:latest": {
+      "current_price": 98,
+      "timestamp": null,
+      "source": "Synthetic market feed",
+      "currency": "INR",
+      "fresh": true
+    }
+  },
+  "cases": [
+    {
+      "id": "portfolio_units",
+      "question": "How many TCS shares do I hold?",
+      "portfolio": "sample",
+      "expected_intent": "portfolio",
+      "expected_status": "answered",
+      "expected_kinds": [
+        "portfolio"
+      ],
+      "contains": [
+        "4.25"
+      ],
+      "excluded": [
+        "INFY"
+      ],
+      "evidence_contains": [
+        "\"quantity\": 4.25"
+      ],
+      "reference": "You hold 4.25 units of TCS."
+    },
+    {
+      "id": "education",
+      "question": "What is an ETF?",
+      "portfolio": "sample",
+      "expected_intent": "general",
+      "expected_status": "answered",
+      "expected_kinds": [],
+      "contains": [
+        "exchange-traded fund"
+      ],
+      "reference": "An ETF is an exchange-traded fund, a pooled investment that trades on an exchange."
+    },
+    {
+      "id": "held_symbol_public_quote",
+      "question": "What is the latest price of TCS?",
+      "portfolio": "sample",
+      "expected_intent": "market",
+      "expected_status": "answered",
+      "expected_kinds": [
+        "market"
+      ],
+      "contains": [
+        "125"
+      ],
+      "excluded": [
+        "4.25",
+        "120"
+      ],
+      "evidence_contains": [
+        "\"price\": 125"
+      ],
+      "reference": "TCS was quoted at INR 125 on 2025-04-02."
+    },
+    {
+      "id": "mixed_conflicting_prices",
+      "question": "What is my TCS holding and the latest price?",
+      "portfolio": "sample",
+      "expected_intent": "mixed",
+      "expected_status": "answered",
+      "expected_kinds": [
+        "portfolio",
+        "market"
+      ],
+      "contains": [
+        "4.25",
+        "125"
+      ],
+      "evidence_contains": [
+        "\"current_price\": 120",
+        "\"price\": 125"
+      ],
+      "reference": "You hold 4.25 units of TCS. The public quote was INR 125 on 2025-04-02. The statement price of INR 120 was from 2025-04-01."
+    },
+    {
+      "id": "follow_up",
+      "question": "What about INFY?",
+      "history": [
+        {
+          "role": "user",
+          "content": "How many TCS shares do I hold?"
+        }
+      ],
+      "portfolio": "sample",
+      "expected_intent": "portfolio",
+      "expected_status": "answered",
+      "expected_kinds": [
+        "portfolio"
+      ],
+      "contains": [
+        "2"
+      ],
+      "excluded": [
+        "TCS"
+      ],
+      "reference": "You hold 2 units of Infosys."
+    },
+    {
+      "id": "intent_change",
+      "question": "What is the latest price of TCS?",
+      "history": [
+        {
+          "role": "user",
+          "content": "How many TCS shares do I hold?"
+        }
+      ],
+      "portfolio": "sample",
+      "expected_intent": "market",
+      "expected_status": "answered",
+      "expected_kinds": [
+        "market"
+      ],
+      "contains": [
+        "125"
+      ],
+      "excluded": [
+        "4.25"
+      ],
+      "reference": "TCS was quoted at INR 125 on 2025-04-02."
+    },
+    {
+      "id": "historical_date",
+      "question": "What was the closing price of TCS on 2025-04-01?",
+      "portfolio": "sample",
+      "expected_intent": "market",
+      "expected_status": "answered",
+      "expected_kinds": [
+        "market"
+      ],
+      "contains": [
+        "115"
+      ],
+      "evidence_contains": [
+        "2025-04-01"
+      ],
+      "reference": "TCS closed at INR 115 on 2025-04-01."
+    },
+    {
+      "id": "missing_market_date",
+      "question": "What was the closing price of TCS on 2025-04-03?",
+      "portfolio": "sample",
+      "expected_intent": "market",
+      "expected_status": "unavailable",
+      "expected_kinds": [],
+      "contains": [
+        "unavailable"
+      ],
+      "reference": "A dated market price for TCS is unavailable."
+    },
+    {
+      "id": "ambiguous",
+      "question": "What is the current price?",
+      "portfolio": "sample",
+      "expected_intent": "clarify",
+      "expected_status": "clarify",
+      "expected_kinds": [],
+      "contains": [
+        "stock symbol"
+      ],
+      "reference": "Which NSE stock symbol should I look up?"
+    },
+    {
+      "id": "empty_portfolio",
+      "question": "What is my portfolio worth?",
+      "portfolio": "empty",
+      "expected_intent": "portfolio",
+      "expected_status": "unavailable",
+      "expected_kinds": [],
+      "contains": [
+        "No confirmed holdings"
+      ],
+      "reference": "No confirmed holdings or trade records are available."
+    },
+    {
+      "id": "missing_portfolio_price",
+      "question": "What is the value of my portfolio?",
+      "portfolio": "sample",
+      "expected_intent": "portfolio",
+      "expected_status": "answered",
+      "expected_kinds": [
+        "portfolio"
+      ],
+      "contains": [
+        "unavailable"
+      ],
+      "evidence_contains": [
+        "\"total_current\": null"
+      ],
+      "reference": "Quoted market value is unavailable. The invested cost is INR 825."
+    },
+    {
+      "id": "rules_without_source",
+      "question": "What is the current capital gains tax rate?",
+      "portfolio": "sample",
+      "expected_intent": "current_rules",
+      "expected_status": "unavailable",
+      "expected_kinds": [],
+      "contains": [
+        "official source"
+      ],
+      "reference": "I could not verify current tax or regulatory rules from an official source."
+    },
+    {
+      "id": "quantity_reopened",
+      "question": "How many TCS shares do I hold after reopening the position?",
+      "portfolio": "reopened",
+      "expected_intent": "portfolio",
+      "expected_status": "answered",
+      "expected_kinds": [
+        "portfolio"
+      ],
+      "reference": "You hold 1.5 units of TCS after reopening the position.",
+      "contains": [
+        "1.5"
+      ],
+      "evidence_contains": [
+        "\"status\": \"REALIZED\"",
+        "\"quantity\": 1.5"
+      ]
+    },
+    {
+      "id": "quantity_sold_out",
+      "question": "How many INFY shares do I hold?",
+      "portfolio": "closed_only",
+      "expected_intent": "portfolio",
+      "expected_status": "unavailable",
+      "expected_kinds": [
+        "portfolio"
+      ],
+      "reference": "No active INFY holding can be verified.",
+      "contains": [
+        "single active holding"
+      ],
+      "evidence_contains": [
+        "\"status\": \"REALIZED\""
+      ]
+    },
+    {
+      "id": "quantity_ambiguous_lots",
+      "question": "What quantity of TCS units do I own?",
+      "portfolio": "duplicate_lots",
+      "expected_intent": "portfolio",
+      "expected_status": "unavailable",
+      "expected_kinds": [
+        "portfolio"
+      ],
+      "reference": "A single active TCS holding could not be verified because two active records matched.",
+      "contains": [
+        "single active holding"
+      ],
+      "evidence_contains": [
+        "\"quantity\": 1",
+        "\"quantity\": 2"
+      ]
+    },
+    {
+      "id": "quantity_other_account",
+      "question": "How many units of TCS do I own?",
+      "portfolio": "other_account",
+      "expected_intent": "portfolio",
+      "expected_status": "answered",
+      "expected_kinds": [
+        "portfolio"
+      ],
+      "reference": "You hold 7.75 units of TCS.",
+      "contains": [
+        "7.75"
+      ],
+      "excluded": [
+        "4.25"
+      ],
+      "evidence_contains": [
+        "\"quantity\": 7.75"
+      ]
+    },
+    {
+      "id": "portfolio_value_complete",
+      "question": "What is my portfolio worth with both holdings priced?",
+      "portfolio": "fully_priced",
+      "expected_intent": "portfolio",
+      "expected_status": "answered",
+      "expected_kinds": [
+        "portfolio"
+      ],
+      "reference": "The quoted market value is INR 725 and invested cost is INR 700.",
+      "contains": [
+        "725",
+        "700"
+      ],
+      "evidence_contains": [
+        "\"total_current\": 725",
+        "\"total_invested\": 700"
+      ]
+    },
+    {
+      "id": "portfolio_value_closed",
+      "question": "What is my portfolio worth after closing my positions?",
+      "portfolio": "closed_only",
+      "expected_intent": "portfolio",
+      "expected_status": "answered",
+      "expected_kinds": [
+        "portfolio"
+      ],
+      "reference": "The quoted market value is INR 0.00 and the invested cost is INR 0 because there are no active positions.",
+      "contains": [
+        "0.00"
+      ],
+      "evidence_contains": [
+        "\"holding_count\": 0"
+      ]
+    },
+    {
+      "id": "portfolio_value_funds",
+      "question": "What is the value of my portfolio of funds?",
+      "portfolio": "mixed_assets",
+      "expected_intent": "portfolio",
+      "expected_status": "answered",
+      "expected_kinds": [
+        "portfolio"
+      ],
+      "reference": "The quoted market value of the portfolio is INR 505 and its invested cost is INR 450.",
+      "contains": [
+        "505",
+        "450"
+      ],
+      "evidence_contains": [
+        "\"total_current\": 505"
+      ]
+    },
+    {
+      "id": "portfolio_partial_sale",
+      "question": "How many SBIN units do I hold after the sale?",
+      "portfolio": "partial_sale",
+      "expected_intent": "portfolio",
+      "expected_status": "answered",
+      "expected_kinds": [
+        "portfolio"
+      ],
+      "reference": "You hold 6 units of SBIN.",
+      "contains": [
+        "6"
+      ],
+      "evidence_contains": [
+        "\"quantity\": 6",
+        "\"realized_pnl\": 80"
+      ]
+    },
+    {
+      "id": "portfolio_realized_pnl",
+      "question": "What was my realized P&L on SBIN?",
+      "portfolio": "partial_sale",
+      "expected_intent": "portfolio",
+      "expected_status": "answered",
+      "expected_kinds": [
+        "portfolio"
+      ],
+      "reference": "Your recorded realized profit on SBIN is INR 80.",
+      "contains": [
+        "80"
+      ],
+      "evidence_contains": [
+        "\"realized_pnl\": 80",
+        "\"sell_date\": \"2025-04-01\""
+      ]
+    },
+    {
+      "id": "portfolio_unknown_realized_pnl",
+      "question": "What is my realized P&L on the SBIN sale?",
+      "portfolio": "missing_realized",
+      "expected_intent": "portfolio",
+      "expected_status": "answered",
+      "expected_kinds": [
+        "portfolio"
+      ],
+      "reference": "The SBIN sale is recorded but its realized P&L is unavailable because the ledger does not state it.",
+      "evidence_contains": [
+        "\"realized_pnl\": null"
+      ]
+    },
+    {
+      "id": "portfolio_statement_cost",
+      "question": "What was my average cost for SBIN?",
+      "portfolio": "fully_priced",
+      "expected_intent": "portfolio",
+      "expected_status": "answered",
+      "expected_kinds": [
+        "portfolio"
+      ],
+      "reference": "Your average acquisition cost was INR 80 per SBIN unit.",
+      "contains": [
+        "80"
+      ],
+      "evidence_contains": [
+        "\"avg_buy_price\": 80"
+      ],
+      "excluded": [
+        "TCS"
+      ]
+    },
+    {
+      "id": "portfolio_isin_lookup",
+      "question": "What is my cost for INE467B01029?",
+      "portfolio": "fully_priced",
+      "expected_intent": "portfolio",
+      "expected_status": "answered",
+      "expected_kinds": [
+        "portfolio"
+      ],
+      "reference": "INE467B01029 is the TCS record with an average acquisition cost of INR 100 per unit and INR 300 invested cost.",
+      "evidence_contains": [
+        "\"isin\": \"INE467B01029\""
+      ],
+      "excluded": [
+        "SBIN"
+      ]
+    },
+    {
+      "id": "portfolio_symbol_missing",
+      "question": "How many WIPRO shares do I hold?",
+      "portfolio": "sample",
+      "expected_intent": "portfolio",
+      "expected_status": "unavailable",
+      "expected_kinds": [],
+      "reference": "No WIPRO record was found in your confirmed portfolio.",
+      "contains": [
+        "No record for WIPRO"
+      ]
+    },
+    {
+      "id": "empty_account_exposure",
+      "question": "What is my exposure to technology?",
+      "portfolio": "empty",
+      "expected_intent": "portfolio",
+      "expected_status": "unavailable",
+      "expected_kinds": [],
+      "reference": "No confirmed holdings or trade records are available to calculate technology exposure.",
+      "contains": [
+        "No confirmed holdings"
+      ]
+    },
+    {
+      "id": "market_unheld_reliance",
+      "question": "What is the current price of RELIANCE?",
+      "portfolio": "sample",
+      "expected_intent": "market",
+      "expected_status": "answered",
+      "expected_kinds": [
+        "market"
+      ],
+      "reference": "RELIANCE was quoted at INR 140.50 on 2025-04-02.",
+      "contains": [
+        "140.5"
+      ],
+      "excluded": [
+        "4.25"
+      ],
+      "evidence_contains": [
+        "\"symbol\": \"RELIANCE\""
+      ]
+    },
+    {
+      "id": "market_infy_missing_statement_price",
+      "question": "What is the latest available price for INFY?",
+      "portfolio": "sample",
+      "expected_intent": "market",
+      "expected_status": "answered",
+      "expected_kinds": [
+        "market"
+      ],
+      "reference": "The synthetic INFY quote is INR 242 as of 2025-04-02.",
+      "contains": [
+        "242"
+      ],
+      "evidence_contains": [
+        "\"price\": 242"
+      ]
+    },
+    {
+      "id": "market_stale_sbin",
+      "question": "What is the last traded price of SBIN?",
+      "portfolio": "fully_priced",
+      "expected_intent": "market",
+      "expected_status": "answered",
+      "expected_kinds": [
+        "market"
+      ],
+      "reference": "The last available SBIN quote was INR 81.75 on 2025-04-01.",
+      "contains": [
+        "81.75",
+        "latest available"
+      ],
+      "evidence_contains": [
+        "\"latest_session_only\": true"
+      ]
+    },
+    {
+      "id": "market_exact_infy_close",
+      "question": "What was the closing price of INFY on 2025-04-01?",
+      "portfolio": "sample",
+      "expected_intent": "market",
+      "expected_status": "answered",
+      "expected_kinds": [
+        "market"
+      ],
+      "reference": "INFY closed at INR 238 on 2025-04-01.",
+      "contains": [
+        "238"
+      ],
+      "excluded": [
+        "242"
+      ]
+    },
+    {
+      "id": "market_exact_sbin_close",
+      "question": "What was the closing price of SBIN on 2025-04-01?",
+      "portfolio": "fully_priced",
+      "expected_intent": "market",
+      "expected_status": "answered",
+      "expected_kinds": [
+        "market"
+      ],
+      "reference": "SBIN closed at INR 80.50 on 2025-04-01.",
+      "contains": [
+        "80.5"
+      ],
+      "excluded": [
+        "81.75"
+      ]
+    },
+    {
+      "id": "market_two_symbols",
+      "question": "What is the stock price of TCS and RELIANCE?",
+      "portfolio": "sample",
+      "expected_intent": "market",
+      "expected_status": "answered",
+      "expected_kinds": [
+        "market"
+      ],
+      "reference": "TCS was quoted at INR 125 and RELIANCE at INR 140.50 on 2025-04-02.",
+      "contains": [
+        "125",
+        "140.5"
+      ],
+      "evidence_contains": [
+        "\"symbol\": \"TCS\"",
+        "\"symbol\": \"RELIANCE\""
+      ]
+    },
+    {
+      "id": "market_partial_coverage",
+      "question": "What is the latest price of HDFCBANK and AXISBANK?",
+      "portfolio": "empty",
+      "expected_intent": "market",
+      "expected_status": "answered",
+      "expected_kinds": [
+        "market"
+      ],
+      "reference": "HDFCBANK was quoted at INR 161 on 2025-04-02. A dated AXISBANK quote is unavailable.",
+      "contains": [
+        "161",
+        "AXISBANK is unavailable"
+      ],
+      "evidence_contains": [
+        "\"symbol\": \"HDFCBANK\""
+      ]
+    },
+    {
+      "id": "market_etf_quote",
+      "question": "What is the current price of NIFTYBEES?",
+      "portfolio": "mixed_assets",
+      "expected_intent": "market",
+      "expected_status": "answered",
+      "expected_kinds": [
+        "market"
+      ],
+      "reference": "NIFTYBEES was quoted at INR 112.75 on 2025-04-02.",
+      "contains": [
+        "112.75"
+      ],
+      "excluded": [
+        "FUND01"
+      ]
+    },
+    {
+      "id": "market_provider_prior_session",
+      "question": "What was the closing price of TCS on 2025-04-05?",
+      "portfolio": "sample",
+      "expected_intent": "market",
+      "expected_status": "unavailable",
+      "expected_kinds": [],
+      "reference": "No closing price was available for TCS on 2025-04-05.",
+      "contains": [
+        "2025-04-05"
+      ],
+      "excluded": [
+        "117"
+      ]
+    },
+    {
+      "id": "market_invalid_zero_quote",
+      "question": "What is the current price of WIPRO?",
+      "portfolio": "empty",
+      "expected_intent": "market",
+      "expected_status": "unavailable",
+      "expected_kinds": [],
+      "reference": "A dated market price for WIPRO is unavailable.",
+      "contains": [
+        "unavailable"
+      ]
+    },
+    {
+      "id": "market_missing_timestamp",
+      "question": "What is the latest price of ITC?",
+      "portfolio": "empty",
+      "expected_intent": "market",
+      "expected_status": "unavailable",
+      "expected_kinds": [],
+      "reference": "A dated market price for ITC is unavailable.",
+      "contains": [
+        "unavailable"
+      ],
+      "excluded": [
+        "98"
+      ]
+    },
+    {
+      "id": "mixed_full_position",
+      "question": "What is my SBIN holding and its current price?",
+      "portfolio": "fully_priced",
+      "expected_intent": "mixed",
+      "expected_status": "answered",
+      "expected_kinds": [
+        "portfolio",
+        "market"
+      ],
+      "reference": "You hold 5 units of SBIN. The last published SBIN quote was INR 81.75 on 2025-04-01.",
+      "contains": [
+        "81.75"
+      ],
+      "evidence_contains": [
+        "\"quantity\": 5",
+        "\"price\": 81.75"
+      ]
+    },
+    {
+      "id": "mixed_only_account",
+      "question": "What is my TCS holding and its closing price on 2025-04-03?",
+      "portfolio": "sample",
+      "expected_intent": "mixed",
+      "expected_status": "answered",
+      "expected_kinds": [
+        "portfolio"
+      ],
+      "reference": "You hold 4.25 units of TCS. A public close on 2025-04-03 is unavailable.",
+      "evidence_contains": [
+        "\"quantity\": 4.25"
+      ],
+      "excluded": [
+        "\"price\": 125"
+      ]
+    },
+    {
+      "id": "mixed_only_market",
+      "question": "What is my RELIANCE holding and its current price?",
+      "portfolio": "sample",
+      "expected_intent": "mixed",
+      "expected_status": "answered",
+      "expected_kinds": [
+        "market"
+      ],
+      "reference": "There is no confirmed RELIANCE holding. The public quote was INR 140.50 on 2025-04-02.",
+      "contains": [
+        "140.5"
+      ],
+      "evidence_contains": [
+        "\"symbol\": \"RELIANCE\""
+      ]
+    },
+    {
+      "id": "followup_market_inherit_symbol",
+      "question": "What was it on 2025-04-01?",
+      "portfolio": "sample",
+      "expected_intent": "market",
+      "expected_status": "answered",
+      "expected_kinds": [
+        "market"
+      ],
+      "reference": "TCS closed at INR 115 on 2025-04-01.",
+      "history": [
+        {
+          "role": "user",
+          "content": "What is the latest price of TCS?"
+        }
+      ],
+      "contains": [
+        "115"
+      ],
+      "excluded": [
+        "125"
+      ]
+    },
+    {
+      "id": "followup_market_inherit_date",
+      "question": "What about INFY?",
+      "portfolio": "sample",
+      "expected_intent": "market",
+      "expected_status": "answered",
+      "expected_kinds": [
+        "market"
+      ],
+      "reference": "INFY closed at INR 238 on 2025-04-01.",
+      "history": [
+        {
+          "role": "user",
+          "content": "What was the closing price of TCS on 2025-04-01?"
+        }
+      ],
+      "contains": [
+        "238"
+      ],
+      "excluded": [
+        "242"
+      ]
+    },
+    {
+      "id": "education_nav",
+      "question": "What is NAV in a mutual fund?",
+      "portfolio": "sample",
+      "expected_intent": "general",
+      "expected_status": "answered",
+      "expected_kinds": [],
+      "reference": "NAV is the assets minus liabilities of a fund per outstanding unit.",
+      "excluded": [
+        "4.25"
+      ]
+    },
+    {
+      "id": "education_cost_basis",
+      "question": "Explain cost basis in investing.",
+      "portfolio": "sample",
+      "expected_intent": "general",
+      "expected_status": "answered",
+      "expected_kinds": [],
+      "reference": "Cost basis is the amount used as the acquisition cost of an investment when measuring a gain or loss.",
+      "excluded": [
+        "825"
+      ]
+    },
+    {
+      "id": "education_dividend",
+      "question": "What is a dividend?",
+      "portfolio": "empty",
+      "expected_intent": "general",
+      "expected_status": "answered",
+      "expected_kinds": [],
+      "reference": "A dividend is a distribution a company pays to shareholders, often in cash."
+    },
+    {
+      "id": "education_diversification",
+      "question": "Explain diversification.",
+      "portfolio": "fully_priced",
+      "expected_intent": "general",
+      "expected_status": "answered",
+      "expected_kinds": [],
+      "reference": "Diversification spreads exposure across investments to reduce dependence on any one investment.",
+      "excluded": [
+        "725"
+      ]
+    },
+    {
+      "id": "unsupported_moving_average",
+      "question": "Show the moving average of TCS.",
+      "portfolio": "sample",
+      "expected_intent": "market",
+      "expected_status": "unavailable",
+      "expected_kinds": [],
+      "reference": "Moving averages are unavailable in chat. The Stocks page has daily price history.",
+      "contains": [
+        "unavailable in chat"
+      ]
+    },
+    {
+      "id": "unsupported_corporate_actions",
+      "question": "List corporate actions for SBIN.",
+      "portfolio": "fully_priced",
+      "expected_intent": "market",
+      "expected_status": "unavailable",
+      "expected_kinds": [],
+      "reference": "Corporate-action lists are unavailable in chat.",
+      "contains": [
+        "unavailable in chat"
+      ]
+    },
+    {
+      "id": "historical_relative_date",
+      "question": "What was the closing price of TCS yesterday?",
+      "portfolio": "sample",
+      "expected_intent": "clarify",
+      "expected_status": "clarify",
+      "expected_kinds": [],
+      "reference": "Which trading date should I look up? Enter it as YYYY-MM-DD.",
+      "contains": [
+        "YYYY-MM-DD"
+      ]
+    },
+    {
+      "id": "historical_two_dates",
+      "question": "What was the TCS closing price on 2025-04-01 and 2025-04-02?",
+      "portfolio": "sample",
+      "expected_intent": "clarify",
+      "expected_status": "clarify",
+      "expected_kinds": [],
+      "reference": "Which trading date should I look up? Enter it as YYYY-MM-DD.",
+      "contains": [
+        "YYYY-MM-DD"
+      ]
+    }
+  ]
+}

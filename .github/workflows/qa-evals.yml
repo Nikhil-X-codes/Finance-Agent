@@ -33,7 +33,7 @@ jobs:
   ragas:
     if: github.event_name == 'workflow_dispatch' && inputs.run_ragas
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 60
     defaults:
       run:
         working-directory: ai-service
@@ -50,7 +50,7 @@ jobs:
           cache: pip
           cache-dependency-path: ai-service/requirements-eval.txt
       - run: pip install -r requirements-eval.txt
-      - run: python -m evals.run --live-answer --judge --thresholds evals/thresholds-v1.json --output ragas-report.json
+      - run: python -m evals.run --live-answer --judge --judge-timeout 180 --thresholds evals/thresholds-v2.json --output ragas-report.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:

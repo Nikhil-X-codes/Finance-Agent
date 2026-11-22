@@ -3,6 +3,7 @@
 from contextlib import asynccontextmanager
 import asyncio
 import os
+from pathlib import Path
 
 import psutil
 from fastapi import FastAPI
@@ -10,6 +11,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
+from psycopg.conninfo import conninfo_to_dict
 from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
 
@@ -30,6 +32,19 @@ def _memory_mb() -> float:
 async def lifespan(app: FastAPI):
     if not settings.supabase_db_url:
         raise RuntimeError("Configure SUPABASE_DB_URL before starting the AI service")
+
+    connection_options = conninfo_to_dict(settings.supabase_db_url)
+    root_cert = connection_options.get("sslrootcert", os.getenv("PGSSLROOTCERT"))
+    ssl_mode = connection_options.get("sslmode", os.getenv("PGSSLMODE"))
+    if (
+        ssl_mode in {"verify-ca", "verify-full"}
+        and root_cert and root_cert != "system" and not Path(root_cert).is_file()
+    ):
+        raise RuntimeError(
+            "The Postgres sslrootcert file was not found. Set SUPABASE_DB_URL or "
+            "PGSSLROOTCERT to point to the Supabase CA file on this host. "
+            "On Render, upload the CA as a Secret File and use /etc/secrets/<filename>."
+        )
 
     if os.name == "nt" and not isinstance(asyncio.get_running_loop(), asyncio.SelectorEventLoop):
         raise RuntimeError("On Windows, start Uvicorn with --loop asyncio:SelectorEventLoop")

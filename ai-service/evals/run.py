@@ -14,11 +14,11 @@ import sys
 from src.core.qa_graph import create_qa_graph, default_qa_providers
 from src.core.qa_types import GroundedAnswer, ParsedQuestion, QAProviders
 
-FIXTURE = Path(__file__).with_name("v1.json")
+FIXTURE = Path(__file__).with_name("v2.json")
 
 
-def load_fixture():
-    return json.loads(FIXTURE.read_text(encoding="utf-8"))
+def load_fixture(path: Path = FIXTURE):
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 async def run_case(graph, fixture, case, *, live_answer=False):
@@ -110,7 +110,7 @@ def threshold_failures(aggregates, policy, fixture_version):
 
 
 async def evaluate(args):
-    fixture = load_fixture()
+    fixture = load_fixture(args.fixture)
     cases = [case for case in fixture["cases"] if not args.case or case["id"] in args.case]
     if not cases or set(args.case or ()) - {case["id"] for case in cases}:
         raise SystemExit("Unknown evaluation case.")
@@ -179,6 +179,7 @@ async def evaluate(args):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--fixture", type=Path, default=FIXTURE, help="Path to a versioned fixture")
     parser.add_argument("--live-answer", action="store_true", help="Use the configured app model on synthetic records")
     parser.add_argument("--judge", action="store_true", help="Score responses using Ragas")
     parser.add_argument("--judge-timeout", type=int, default=120, help="Per-case judge timeout in seconds")

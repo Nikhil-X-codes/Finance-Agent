@@ -11,6 +11,22 @@ from fastapi.testclient import TestClient
 from src.services.cache_service import cache_service
 
 
+class PostgresConfigurationTests(unittest.TestCase):
+    def test_missing_ca_fails_before_opening_pool(self):
+        from src.api import main
+
+        db_url = (
+            "postgresql://example.test/finance?sslmode=verify-full"
+            "&sslrootcert=D%3A%2Fmissing%20certs%2Fprod-ca-2021.crt"
+        )
+        settings = replace(main.settings, supabase_db_url=db_url)
+        with patch.object(main, "settings", settings), patch.object(main, "AsyncConnectionPool") as pool:
+            with self.assertRaisesRegex(RuntimeError, r"sslrootcert file was not found.*?/etc/secrets/"):
+                with TestClient(main.app, backend_options={"loop_factory": asyncio.SelectorEventLoop}):
+                    self.fail("Started with a missing CA certificate")
+            pool.assert_not_called()
+
+
 @unittest.skipUnless(os.environ.get("SUPABASE_TEST_DB_URL"), "Test database not configured")
 class PostgresLifecycleTests(unittest.TestCase):
     def test_report_stream_and_cache_survive_application_restart(self):

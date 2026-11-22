@@ -107,6 +107,14 @@ npm run dev
 
 Open **http://localhost:3000** and sign in or register. The FastAPI health check is at **http://127.0.0.1:8000/health**. FastAPI’s OpenAPI documentation and private endpoints require the internal service key.
 
+## Deploy FastAPI on Render
+
+In the Render service’s **Environment → Secret Files**, add `prod-ca-2021.crt` and paste the full contents of the CA certificate downloaded from Supabase’s database settings. Render makes the file available at `/etc/secrets/prod-ca-2021.crt`. [Render secret files](https://render.com/docs/configure-environment-variables#secret-files) · [Supabase TLS settings](https://supabase.com/docs/guides/platform/ssl-enforcement)
+
+In **Environment Variables**, keep the existing Supabase Session pooler credentials and replace the certificate path in `SUPABASE_DB_URL` with the Render path. If the URL only has these two query parameters, its suffix should be `?sslmode=verify-full&sslrootcert=/etc/secrets/prod-ca-2021.crt`. Repeat this configuration for Next.js if it also runs on Render.
+
+From the `ai-service` directory, use `uvicorn src.api.main:app --host 0.0.0.0 --port "$PORT"` as the start command. Set the Render health check path to `/health`. Save and deploy. An HTTP 200 from `/health` confirms that startup reached the database and found the cache table. [Render port binding](https://render.com/docs/web-services#port-binding)
+
 ## Data and accounting
 
 | Data | Source and behavior |
@@ -155,15 +163,25 @@ node frontend/tests/smoke.mjs --production
 The [Q&A evaluations workflow](.github/workflows/qa-evals.yml) runs deterministic checks without provider credentials. To run the model-judged suite locally, install [requirements-eval.txt](ai-service/requirements-eval.txt), export `GROQ_API_KEY`, `EVAL_API_KEY`, and `EVAL_MODEL`, and set `EVAL_BASE_URL` if your evaluator uses an OpenAI-compatible endpoint. Run from `ai-service/`.
 
 ```powershell
-..\.venv\Scripts\python.exe -m evals.run --live-answer --judge --thresholds evals/thresholds-v1.json --output ragas-report.json
+..\.venv\Scripts\python.exe -m evals.run --live-answer --judge --judge-timeout 180 --thresholds evals/thresholds-v2.json --output ragas-report.json
 ```
 
 The Ragas run gates faithfulness, context precision, and context recall, and reports factual correctness. `--case CASE_ID` retries one case and `--judge-timeout SECONDS` adjusts its scoring deadline.
 
+### Q&A evaluation results
+
+The [v2 fixture](ai-service/evals/v2.json) covers 50 synthetic scenarios. The checks include separate account holdings, closed and reopened positions, conflicting or missing prices, exact trading dates, and follow-up questions that change intent. The [original v1 fixture](ai-service/evals/v1.json) remains available through `--fixture evals/v1.json`.
+
+**Deterministic result:** 50 of 50 cases passed. The graph answered 35 cases, reported unavailable evidence or unsupported requests in 12, and asked for clarification in three.
+
+![Finance Agent Q&A evaluation results, including deterministic pass counts by question type](ai-service/evals/results/v2-results.svg)
+
+[Deterministic per-case results](ai-service/evals/results/v2-deterministic.json)
+
 | Phase | Status |
 | --- | --- |
 | 1–4 · API boundary, Postgres, accounting, and LangGraph | Implemented and verified. |
-| 5 · Q&A evaluations | All 12 deterministic cases pass. A complete live Ragas run remains pending after judge timeouts and rate limiting. |
+| 5 · Q&A evaluations | All 50 v2 deterministic cases pass. See the chart and per-case output above. |
 | 6 · Market data cutover | Both NSE adapters returned INFY data for 20 November 2026. MFapi.in returned dated NAVs for all 12 fund categories. The production frontend build and API smoke test, all 27 backend tests, and all eight frontend unit tests passed. |
 
 ## Migrate an existing SQLite database

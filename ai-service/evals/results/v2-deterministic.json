@@ -1,0 +1,359 @@
+{
+  "fixture_version": 2,
+  "selected_cases": 50,
+  "failed_cases": [],
+  "cases": [
+    {
+      "id": "portfolio_units",
+      "intent": "portfolio",
+      "status": "answered",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "education",
+      "intent": "general",
+      "status": "answered",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "held_symbol_public_quote",
+      "intent": "market",
+      "status": "answered",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "mixed_conflicting_prices",
+      "intent": "mixed",
+      "status": "answered",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "follow_up",
+      "intent": "portfolio",
+      "status": "answered",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "intent_change",
+      "intent": "market",
+      "status": "answered",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "historical_date",
+      "intent": "market",
+      "status": "answered",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "missing_market_date",
+      "intent": "market",
+      "status": "unavailable",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "ambiguous",
+      "intent": "clarify",
+      "status": "clarify",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "empty_portfolio",
+      "intent": "portfolio",
+      "status": "unavailable",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "missing_portfolio_price",
+      "intent": "portfolio",
+      "status": "answered",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "rules_without_source",
+      "intent": "current_rules",
+      "status": "unavailable",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "quantity_reopened",
+      "intent": "portfolio",
+      "status": "answered",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "quantity_sold_out",
+      "intent": "portfolio",
+      "status": "unavailable",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "quantity_ambiguous_lots",
+      "intent": "portfolio",
+      "status": "unavailable",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "quantity_other_account",
+      "intent": "portfolio",
+      "status": "answered",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "portfolio_value_complete",
+      "intent": "portfolio",
+      "status": "answered",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "portfolio_value_closed",
+      "intent": "portfolio",
+      "status": "answered",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "portfolio_value_funds",
+      "intent": "portfolio",
+      "status": "answered",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "portfolio_partial_sale",
+      "intent": "portfolio",
+      "status": "answered",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "portfolio_realized_pnl",
+      "intent": "portfolio",
+      "status": "answered",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "portfolio_unknown_realized_pnl",
+      "intent": "portfolio",
+      "status": "answered",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "portfolio_statement_cost",
+      "intent": "portfolio",
+      "status": "answered",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "portfolio_isin_lookup",
+      "intent": "portfolio",
+      "status": "answered",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "portfolio_symbol_missing",
+      "intent": "portfolio",
+      "status": "unavailable",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "empty_account_exposure",
+      "intent": "portfolio",
+      "status": "unavailable",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "market_unheld_reliance",
+      "intent": "market",
+      "status": "answered",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "market_infy_missing_statement_price",
+      "intent": "market",
+      "status": "answered",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "market_stale_sbin",
+      "intent": "market",
+      "status": "answered",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "market_exact_infy_close",
+      "intent": "market",
+      "status": "answered",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "market_exact_sbin_close",
+      "intent": "market",
+      "status": "answered",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "market_two_symbols",
+      "intent": "market",
+      "status": "answered",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "market_partial_coverage",
+      "intent": "market",
+      "status": "answered",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "market_etf_quote",
+      "intent": "market",
+      "status": "answered",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "market_provider_prior_session",
+      "intent": "market",
+      "status": "unavailable",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "market_invalid_zero_quote",
+      "intent": "market",
+      "status": "unavailable",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "market_missing_timestamp",
+      "intent": "market",
+      "status": "unavailable",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "mixed_full_position",
+      "intent": "mixed",
+      "status": "answered",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "mixed_only_account",
+      "intent": "mixed",
+      "status": "answered",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "mixed_only_market",
+      "intent": "mixed",
+      "status": "answered",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "followup_market_inherit_symbol",
+      "intent": "market",
+      "status": "answered",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "followup_market_inherit_date",
+      "intent": "market",
+      "status": "answered",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "education_nav",
+      "intent": "general",
+      "status": "answered",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "education_cost_basis",
+      "intent": "general",
+      "status": "answered",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "education_dividend",
+      "intent": "general",
+      "status": "answered",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "education_diversification",
+      "intent": "general",
+      "status": "answered",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "unsupported_moving_average",
+      "intent": "market",
+      "status": "unavailable",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "unsupported_corporate_actions",
+      "intent": "market",
+      "status": "unavailable",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "historical_relative_date",
+      "intent": "clarify",
+      "status": "clarify",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "historical_two_dates",
+      "intent": "clarify",
+      "status": "clarify",
+      "errors": [],
+      "scores": {}
+    }
+  ],
+  "averages": {},
+  "gate_failures": []
+}

@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="820" height="374" viewBox="0 0 820 374" role="img" aria-labelledby="title description">
+<title id="title">Finance Agent Q&amp;A evaluation results</title>
+<desc id="description">Deterministic results by intent and model-judged Ragas scores when available.</desc>
+<rect width="820" height="374" rx="16" fill="#f8fafc"/>
+<g font-family="system-ui, sans-serif" fill="#0f172a">
+<text x="30" y="47" font-size="26" font-weight="700">Q&amp;A evaluation · Fixture v2</text>
+<text x="30" y="77" font-size="16" font-weight="700">Deterministic graph checks · 50/50 passed</text>
+<text x="30" y="102" font-size="14">Synthetic portfolios and quotes · model responses mocked</text>
+<text x="30" y="139" font-size="14">Portfolio</text>
+<rect x="205" y="126" width="397.89473684210526" height="15" rx="4" fill="#e2e8f0"/>
+<rect x="205" y="126" width="397.89" height="15" rx="4" fill="#0f766e"/>
+<text x="655" y="139" font-size="14">18/18</text>
+<text x="30" y="173" font-size="14">Public market</text>
+<rect x="205" y="160" width="420.0" height="15" rx="4" fill="#e2e8f0"/>
+<rect x="205" y="160" width="420.00" height="15" rx="4" fill="#0f766e"/>
+<text x="655" y="173" font-size="14">19/19</text>
+<text x="30" y="207" font-size="14">Mixed</text>
+<rect x="205" y="194" width="88.42105263157895" height="15" rx="4" fill="#e2e8f0"/>
+<rect x="205" y="194" width="88.42" height="15" rx="4" fill="#0f766e"/>
+<text x="655" y="207" font-size="14">4/4</text>
+<text x="30" y="241" font-size="14">Finance education</text>
+<rect x="205" y="228" width="110.52631578947368" height="15" rx="4" fill="#e2e8f0"/>
+<rect x="205" y="228" width="110.53" height="15" rx="4" fill="#0f766e"/>
+<text x="655" y="241" font-size="14">5/5</text>
+<text x="30" y="275" font-size="14">Clarification</text>
+<rect x="205" y="262" width="66.3157894736842" height="15" rx="4" fill="#e2e8f0"/>
+<rect x="205" y="262" width="66.32" height="15" rx="4" fill="#0f766e"/>
+<text x="655" y="275" font-size="14">3/3</text>
+<text x="30" y="309" font-size="14">Current rules</text>
+<rect x="205" y="296" width="22.105263157894736" height="15" rx="4" fill="#e2e8f0"/>
+<rect x="205" y="296" width="22.11" height="15" rx="4" fill="#0f766e"/>
+<text x="655" y="309" font-size="14">1/1</text>
+</g>
+</svg>

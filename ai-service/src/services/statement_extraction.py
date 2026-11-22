@@ -1,13 +1,21 @@
 """Structured broker-statement extraction and row-level validation."""
 
 from datetime import date
+from time import sleep
 from typing import Any
 
+from groq import RateLimitError
 from langchain_groq import ChatGroq
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from src.config.models import Holding, ParseStatementResponse, RealizedTrade
 from src.config.settings import settings
+
+
+class StatementExtractionError(RuntimeError):
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
 
 
 class StatementExtraction(BaseModel):
@@ -38,7 +46,10 @@ For realized_trades also extract buy_price, sell_price, realized_pnl, buy_date a
 Keep duplicate rows representing different lots or transactions. Omit headers and totals.
 Record incomplete rows in unrecognized_rows. Use null for missing values. Never invent a price, quantity, symbol or ISIN.
 Set coverage_start and coverage_end to the explicitly stated statement period or holdings as-of date in YYYY-MM-DD.
-Use null if the date is absent. Do not infer coverage from the latest transaction."""
+Use null if the date is absent. Do not infer coverage from the latest transaction.
+Return one JSON object with broker_detected (string), confidence (number from 0 to 1),
+coverage_start, coverage_end, holdings, realized_trades, and unrecognized_rows.
+All three row collections must be arrays of objects. Omit missing optional fields within rows."""
 
 
 def _normalize(row: dict[str, Any]) -> dict[str, Any]:
@@ -90,16 +101,51 @@ def validate_extractions(extractions: list[StatementExtraction]) -> ParseStateme
     )
 
 
-def parse_sections(sections: list[str]) -> ParseStatementResponse:
+def parse_sections(sections: list[str], *, max_sections: int = 40) -> ParseStatementResponse:
     if not sections or not any(section.strip() for section in sections):
         raise ValueError("No readable statement rows were found.")
-    if len(sections) > 40 or any(len(section) > 22000 for section in sections):
+    if len(sections) > max_sections or any(len(section) > 22000 for section in sections):
         raise ValueError("Statement is too large to parse reliably. Upload a smaller statement.")
     if not settings.groq_api_key:
-        raise RuntimeError("Statement extraction service is not configured.")
+        raise StatementExtractionError("not_configured", "Statement extraction service is not configured.")
 
     llm = ChatGroq(groq_api_key=settings.groq_api_key, model=settings.groq_model, temperature=0)
-    extractor = llm.with_structured_output(StatementExtraction, method="function_calling")
-    return validate_extractions([extractor.invoke([
-        ("system", EXTRACTION_PROMPT), ("human", section),
-    ]) for section in sections])
+    extractor = llm.bind(response_format={"type": "json_object"})
+    extractions = []
+    remaining_retry_wait = 30.0
+    for section in sections:
+        messages = [("system", EXTRACTION_PROMPT), ("human", section)]
+        try:
+            response = extractor.invoke(messages)
+        except RateLimitError as exc:
+            # The SDK already retries. Give a short provider cooldown one more attempt
+            # without reprocessing the sections that finished before the rate limit.
+            try:
+                wait = float(exc.response.headers.get("Retry-After", ""))
+            except ValueError:
+                raise exc from None
+            if not 0 < wait <= remaining_retry_wait:
+                raise
+            sleep(wait)
+            remaining_retry_wait -= wait
+            response = extractor.invoke(messages)
+        try:
+            extraction = _parse_response(response)
+        except StatementExtractionError:
+            retry_prompt = EXTRACTION_PROMPT + (
+                "\nUse compact JSON without indentation or commentary. Keep every row, "
+                "omit fields that are missing, and use a short reason for each unrecognized row."
+            )
+            response = extractor.invoke([("system", retry_prompt), ("human", section)])
+            extraction = _parse_response(response)
+        extractions.append(extraction)
+    return validate_extractions(extractions)
+
+
+def _parse_response(response) -> StatementExtraction:
+    if response.response_metadata.get("finish_reason") == "length":
+        raise StatementExtractionError("output_limit", "Statement extraction response exceeded the model output limit.")
+    try:
+        return StatementExtraction.model_validate_json(response.content)
+    except (ValidationError, TypeError) as exc:
+        raise StatementExtractionError("invalid_output", "Statement extraction returned invalid JSON data.") from exc

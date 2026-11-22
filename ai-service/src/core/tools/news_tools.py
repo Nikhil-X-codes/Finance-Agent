@@ -1,18 +1,22 @@
-"""News tool with NewsAPI primary — reliable, no HTML scraping."""
+"""Public stock news with dated provenance and report selection."""
 
-from __future__ import annotations
-
-import os
-import time
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
+from html import unescape
+import re
 from typing import Any
+from urllib.parse import urlsplit
+import xml.etree.ElementTree as ET
 
 import httpx
 
-from ...config.constants import STOCK_NEWS_CACHE_TTL_SECONDS
-from ...services.cache_service import cache_service
+from src.config.settings import settings
+from src.services.cache_service import cache_service
 
-NEWS_API_KEY = os.getenv("NEWS_API_KEY")
+NEWS_WINDOW_DAYS = 30
+NEWS_LIMIT = 6
+GOOGLE_NEWS_URL = "https://news.google.com/rss/search"
 NEWS_API_URL = "https://newsapi.org/v2/everything"
 
 
@@ -23,163 +27,159 @@ class NewsResult:
     error: str | None = None
 
 
+def _published_at(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        try:
+            published = datetime.fromisoformat(value)
+        except ValueError:
+            published = parsedate_to_datetime(value)
+        if published.tzinfo is not None:
+            return published.astimezone(timezone.utc)
+    except (TypeError, ValueError, OverflowError):
+        pass
+    return None
+
+
+def _recent_articles(articles: list[dict], now: datetime) -> list[dict]:
+    cutoff = now - timedelta(days=NEWS_WINDOW_DAYS)
+    rows = []
+    for article in articles:
+        if not isinstance(article, dict):
+            continue
+        published = _published_at(article.get("published_at") or article.get("publishedAt"))
+        if published is None or not cutoff <= published <= now:
+            continue
+        url = article.get("url") or ""
+        try:
+            url_parts = urlsplit(url)
+        except (TypeError, ValueError):
+            continue
+        if url_parts.scheme not in {"http", "https"} or not url_parts.hostname or url_parts.username:
+            continue
+        title = " ".join(unescape(str(article.get("title") or "")).split())
+        if title:
+            rows.append({
+                "title": title, "url": url, "source": str(article.get("source") or "Unknown publisher"),
+                "publishedAt": published.isoformat(),
+            })
+    return sorted(rows, key=lambda row: row["publishedAt"], reverse=True)
+
+
+def _headline(title: str, source: str) -> set[str]:
+    suffix = f" - {source}"
+    if title.casefold().endswith(suffix.casefold()):
+        title = title[:-len(suffix)]
+    return set(re.findall(r"[a-z0-9]+", title.casefold()))
+
+
+def _matches_company(article: dict, company: str, ticker: str) -> bool:
+    title = article["title"].rsplit(f" - {article['source']}", 1)[0].casefold()
+    compact_title = "".join(re.findall(r"[a-z0-9]+", title))
+    compact_name = "".join(re.findall(r"[a-z0-9]+", company.casefold()))
+    title_words = set(re.findall(r"[a-z0-9&]+", title))
+    return bool((len(compact_name) >= 4 and compact_name in compact_title)
+                or (len(ticker) >= 3 and ticker.casefold() in title_words))
+
+
+def select_report_news(batches: dict[str, list[dict]], now: datetime) -> list[dict]:
+    """Prefer coverage across holdings and suppress repeated versions of the same headline."""
+    selected = []
+    urls = set()
+    headlines = []
+
+    def take(ticker: str, limit: int):
+        for article in _recent_articles(batches.get(ticker, []), now):
+            words = _headline(article["title"], article["source"])
+            url = article["url"]
+            if not words or url in urls or any(len(words & seen) / len(words | seen) >= 0.72 for seen in headlines):
+                continue
+            urls.add(url)
+            headlines.append(words)
+            selected.append({**article, "ticker": ticker})
+            if sum(row["ticker"] == ticker for row in selected) >= limit or len(selected) >= NEWS_LIMIT:
+                break
+
+    for ticker in batches:
+        if ticker != "MARKET" and len(selected) < NEWS_LIMIT - 1:
+            take(ticker, 1)
+    if len(selected) < NEWS_LIMIT:
+        take("MARKET", 1)
+    for ticker in batches:
+        if ticker != "MARKET" and len(selected) < NEWS_LIMIT:
+            take(ticker, 2)
+    return selected
+
+
 class NewsTools:
     def __init__(self, client: httpx.AsyncClient | None = None) -> None:
         self._client = client
-        self._api_key = NEWS_API_KEY
 
     async def _get_client(self) -> httpx.AsyncClient:
-        if self._client is not None:
-            return self._client
-        self._client = httpx.AsyncClient(timeout=20.0, follow_redirects=True)
+        if self._client is None:
+            self._client = httpx.AsyncClient(timeout=8, follow_redirects=True)
         return self._client
 
-    @staticmethod
-    def _cache_key(symbol: str) -> str:
-        return f"NEWS:{symbol.upper()}"
-
-    @staticmethod
-    def _is_fresh(payload: dict[str, Any]) -> bool:
-        expires_at = int(payload.get("_cache_expires_at", 0) or 0)
-        return expires_at > int(time.time())
-
-    @staticmethod
-    def _public_payload(payload: dict[str, Any]) -> dict[str, Any]:
-        return {k: v for k, v in payload.items() if k not in {"_cache_expires_at", "_stale"}}
-
-    async def _fetch_google_rss(self, symbol: str, company_name: str | None = None) -> list[dict[str, Any]]:
-        """Fetch news from Google News RSS."""
-        from urllib.parse import quote_plus
-        import xml.etree.ElementTree as ET
-        
+    async def _google(self, query: str) -> list[dict]:
         client = await self._get_client()
-        query_term = company_name if company_name else f"{symbol} stock"
-        query = quote_plus(f"{query_term} India")
-        url = f"https://news.google.com/rss/search?q={query}&hl=en-IN&gl=IN&ceid=IN:en"
-        
-        response = await client.get(url)
+        response = await client.get(GOOGLE_NEWS_URL, params={"q": f"{query} when:{NEWS_WINDOW_DAYS}d", "hl": "en-IN", "gl": "IN", "ceid": "IN:en"})
         response.raise_for_status()
-        
-        root = ET.fromstring(response.text)
-        items = root.findall(".//item")
-        
-        articles = []
-        for item in items[:5]:
-            title = item.find("title").text if item.find("title") is not None else ""
-            link = item.find("link").text if item.find("link") is not None else ""
-            pub_date = item.find("pubDate").text if item.find("pubDate") is not None else None
-            source = item.find("source").text if item.find("source") is not None else "Google News"
-            description = item.find("description").text if item.find("description") is not None else None
-            
-            if not title:
-                continue
-                
-            articles.append({
-                "title": title,
-                "url": link,
-                "source": source,
-                "published_at": pub_date,
-                "summary": description,
-            })
-        return articles
+        root = ET.fromstring(response.content)
+        return [{
+            "title": item.findtext("title"), "url": item.findtext("link"),
+            "source": item.findtext("source"), "published_at": item.findtext("pubDate"),
+        } for item in root.findall("./channel/item")[:15]]
 
-    async def _fetch_newsapi(self, symbol: str, company_name: str | None = None) -> list[dict[str, Any]]:
-        """Fetch news from NewsAPI."""
-        if not self._api_key:
-            raise RuntimeError("NEWS_API_KEY not set. Get free key from newsapi.org")
-        
+    async def _newsapi(self, query: str, now: datetime) -> list[dict]:
+        key = settings.newsapi_key
+        if not key:
+            raise RuntimeError("NewsAPI is not configured.")
         client = await self._get_client()
-        query_term = company_name if company_name else f"{symbol} stock"
-        params = {
-            "q": f"{query_term} India",
-            "apiKey": self._api_key,
-            "pageSize": 5,
-            "sortBy": "publishedAt",
-            "language": "en",
-        }
-        
-        response = await client.get(NEWS_API_URL, params=params)
+        response = await client.get(NEWS_API_URL, headers={"X-Api-Key": key}, params={
+            "q": query, "from": (now - timedelta(days=NEWS_WINDOW_DAYS)).date().isoformat(),
+            "pageSize": 15, "sortBy": "publishedAt", "language": "en",
+        })
         response.raise_for_status()
         data = response.json()
-        
         if data.get("status") != "ok":
-            raise RuntimeError(f"NewsAPI error: {data.get('message', 'Unknown')}")
-        
-        articles = []
-        for a in data.get("articles", []):
-            articles.append({
-                "title": a.get("title", ""),
-                "url": a.get("url", ""),
-                "source": a.get("source", {}).get("name", "NewsAPI"),
-                "published_at": a.get("publishedAt"),
-                "summary": a.get("description"),
-            })
-        
-        return articles
+            raise RuntimeError("NewsAPI failed.")
+        return [{
+            "title": item.get("title"), "url": item.get("url"),
+            "source": (item.get("source") or {}).get("name"), "published_at": item.get("publishedAt"),
+        } for item in data.get("articles", [])]
 
     async def get_stock_news(self, symbol: str, company_name: str | None = None) -> NewsResult:
-        ticker = symbol.upper().strip()
-        cache_key = self._cache_key(ticker)
-        cached = await cache_service.get(cache_key)
-        
-        # Return fresh cache
-        if cached is not None and self._is_fresh(cached):
-            payload = self._public_payload(cached)
-            payload["cached"] = True
-            payload["fresh"] = True
-            return NewsResult(data=payload, stale=False)
-        
-        stale_payload = self._public_payload(cached) if cached else None
-        
-        # Try Google News RSS first
-        try:
-            articles = await self._fetch_google_rss(ticker, company_name)
+        now = datetime.now(timezone.utc)
+        ticker = symbol.strip().upper()
+        public_name = re.sub(r"[^\w .&-]", " ", company_name or "").strip()
+        public_name = re.sub(r"(?:[\s.]+(?:limited|ltd|plc)\.?)+$", "", public_name, flags=re.IGNORECASE)
+        query = '("Nifty 50" OR "Indian stock market")' if ticker == "MARKET" else f'"{public_name or ticker}" stock India'
+
+        def relevant(rows):
+            dated = _recent_articles(rows, now)
+            return dated if ticker == "MARKET" else [row for row in dated if _matches_company(row, public_name, ticker)]
+
+        async def fetch():
+            try:
+                articles = relevant(await self._google(query))
+            except Exception:
+                articles = None
             if articles:
-                value = {
-                    "ticker": ticker,
-                    "news": articles,
-                    "source": "GoogleNewsRSS",
-                    "cached": False,
-                    "fresh": True,
-                }
-                await cache_service.set(cache_key, value, STOCK_NEWS_CACHE_TTL_SECONDS, source="GoogleNewsRSS")
-                return NewsResult(data=value, stale=False)
-        except Exception as rss_error:
-            pass
-            
-        # Fallback to NewsAPI
+                return {"news": articles, "source": "Google News RSS"}
+            if settings.newsapi_key:
+                return {"news": relevant(await self._newsapi(query, now)), "source": "NewsAPI"}
+            if articles is None:
+                raise RuntimeError("News sources unavailable.")
+            return {"news": [], "source": "Google News RSS"}
+
         try:
-            articles = await self._fetch_newsapi(ticker, company_name)
-            
-            if not articles:
-                return NewsResult(
-                    data={"ticker": ticker, "news": [], "source": "NewsAPI", "cached": False, "fresh": True},
-                    stale=False
-                )
-            
-            value = {
-                "ticker": ticker,
-                "news": articles,
-                "source": "NewsAPI",
-                "cached": False,
-                "fresh": True,
-            }
-            await cache_service.set(cache_key, value, STOCK_NEWS_CACHE_TTL_SECONDS, source="NewsAPI")
-            return NewsResult(data=value, stale=False)
-            
-        except Exception as exc:
-            # Serve stale cache if available
-            if stale_payload is not None:
-                stale_payload["cached"] = True
-                stale_payload["fresh"] = False
-                stale_payload["stale_warning"] = "News sources unavailable; serving stale news"
-                return NewsResult(data=stale_payload, stale=True, error=str(exc))
-            
-            return NewsResult(
-                data={"ticker": ticker, "news": [], "source": "NewsAPI", "cached": False, "fresh": False, "error": "NEWS_UNAVAILABLE"},
-                stale=False,
-                error=str(exc)
+            cached = await cache_service.get_or_fetch(
+                f"NEWS:v2:{ticker}:{public_name.casefold()}", settings.stock_news_cache_ttl_seconds, fetch,
             )
+            return NewsResult(cached.value, stale=cached.stale)
+        except Exception as exc:
+            return NewsResult({"news": []}, error=type(exc).__name__)
 
 
 news_tools = NewsTools()

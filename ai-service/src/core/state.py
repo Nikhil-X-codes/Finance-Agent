@@ -14,9 +14,10 @@ class ReportState(TypedDict, total=False):
     enriched_holdings: list[dict[str, Any]]
     overall_risk: str
     risk_flags: list[dict[str, Any]]
+    concentration: dict[str, Any]
     generated_via: str
     recommendations: list[dict[str, Any]]
     report_json: dict[str, Any]
-    portfolio_context_text: str
     portfolio_summary: dict[str, Any]
-    market_news: list[dict[str, Any]]
+    report_news: list[dict[str, Any]]
+    market_snapshot: dict[str, Any]

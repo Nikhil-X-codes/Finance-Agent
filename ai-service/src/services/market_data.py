@@ -56,6 +56,7 @@ class MarketDataProvider(Protocol):
     async def historical_close(self, symbol: str, trading_date: date) -> Quote: ...
 
     async def movers(self, limit: int) -> dict[str, list[str]]: ...
+    async def index_snapshot(self) -> dict: ...
 
 
 @dataclass
@@ -90,6 +91,9 @@ class MarketDataService:
         if self.provider is None:
             return {"gainers": [], "losers": []}
         return await self.provider.movers(limit)
+
+    async def index_snapshot(self) -> dict:
+        return {} if self.provider is None else await self.provider.index_snapshot()
 
 
 market_data = MarketDataService(NseMcpProvider() if settings.nse_market_data else None)

@@ -5,6 +5,8 @@ from datetime import date
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+import httpx
+
 from evals.run import check_case, load_fixture, run_case, threshold_failures
 from src.api.routes import stocks
 from src.api.routes import mf_comparison
@@ -12,6 +14,7 @@ from src.api.routes.stocks import _quote_fields
 from src.core.qa_graph import create_qa_graph, market_with_provider
 from src.core.qa_types import QAProviders
 from src.core.tools import nse_market
+from src.core.tools.mf_tools import MFTools
 from src.services.market_data import market_data
 
 
@@ -47,6 +50,82 @@ class QuestionRoutingTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(check_case(case, result), [])
 
 
+class MutualFundComparisonTests(unittest.IsolatedAsyncioTestCase):
+    async def test_fund_comparison_uses_mfapi_category_and_dated_nav(self):
+        async def respond(request):
+            self.assertEqual(request.url.host, "api.mfapi.in")
+            self.assertNotIn("X-API-Key", request.headers)
+            if request.url.path == "/mf":
+                return httpx.Response(200, json=[
+                    {"schemeCode": 1001, "schemeName": "Example Large Cap Fund"},
+                    {"schemeCode": 1002, "schemeName": "Example Focused Large Cap Fund"},
+                ])
+            code = int(request.url.path.split("/")[2])
+            self.assertEqual(request.url.path, f"/mf/{code}/latest")
+            category = "Large Cap Fund" if code == 1001 else "Large & Mid Cap Fund"
+            return httpx.Response(200, json={
+                "meta": {
+                    "scheme_code": code, "scheme_name": "Example fund",
+                    "scheme_category": f"Equity Scheme - {category}", "fund_house": "Example AMC",
+                },
+                "data": [{"nav": "123.456", "date": "20-11-2026"}],
+            })
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+            rows = await mf_comparison._fetch_comparison(client, "Large Cap")
+
+        self.assertEqual([fund["schemeCode"] for fund in rows], [1001])
+        self.assertEqual(rows[0]["nav"], 123.456)
+        self.assertEqual(rows[0]["navDate"], "2026-11-20")
+        self.assertIsNone(rows[0]["cagr"]["1Y"])
+
+    async def test_sectoral_funds_use_scheme_category_and_deduplicate_catalog_matches(self):
+        catalog_row = {"schemeCode": 101, "schemeName": "Example Technology Fund"}
+
+        async def respond(request):
+            if request.url.path == "/mf":
+                return httpx.Response(200, json=[catalog_row, catalog_row])
+            return httpx.Response(200, json={
+                "meta": {
+                    "scheme_code": 101, "scheme_name": "Fund", "fund_house": "Example AMC",
+                    "scheme_category": "Equity Scheme - Sectoral/ Thematic",
+                },
+                "data": [{"nav": "97.25", "date": "20-11-2026"}],
+            })
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+            rows = await mf_comparison._fetch_comparison(client, "Sectoral/Thematic")
+
+        self.assertEqual([fund["schemeCode"] for fund in rows], [101])
+
+    async def test_report_metadata_resolves_isin_using_the_same_provider(self):
+        async def respond(request):
+            if request.url.path == "/mf":
+                return httpx.Response(200, json=[{"schemeCode": 101, "isinGrowth": "INF000000001"}])
+            self.assertEqual(request.url.path, "/mf/101/latest")
+            return httpx.Response(200, json={
+                "meta": {"scheme_code": 101, "scheme_category": "Equity Scheme - Mid Cap Fund"},
+                "data": [],
+            })
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+            result = await MFTools(client).get_metadata("INF000000001")
+
+        self.assertEqual(result.data["category"], "Equity Scheme - Mid Cap Fund")
+        self.assertEqual(result.data["source"], "MFapi.in")
+
+    async def test_fund_comparison_reports_source_without_inventing_a_common_date(self):
+        rows = [{"schemeCode": 101, "navDate": "2026-11-20"}]
+        with patch.object(
+            mf_comparison.cache_service, "get_or_fetch", AsyncMock(return_value=SimpleNamespace(value=rows)),
+        ) as cache:
+            result = await mf_comparison.get_mf_comparison("Large Cap", refresh=False)
+        self.assertEqual(cache.await_args.args[0], "MFAPI_COMPARISON:Large Cap")
+        self.assertEqual(result["source"], "MFapi.in")
+        self.assertEqual(result["funds"], rows)
+        self.assertIsNone(result["dataAsOf"])
+
+
 class NseMarketTests(unittest.IsolatedAsyncioTestCase):
     async def test_market_movers_uses_provider_symbols_and_quote_timestamps(self):
         ranking = {"gainers": [{"symbol": "OAL"}, {"symbol": "OAL"}], "losers": [{"symbol": "BALAXI"}]}
@@ -62,45 +141,6 @@ class NseMarketTests(unittest.IsolatedAsyncioTestCase):
             ("OAL", "gainers"), ("BALAXI", "losers"),
         ])
         self.assertEqual(result["stocks"][0]["marketTimestamp"], quote["timestamp"])
-
-    async def test_fund_comparison_does_not_substitute_other_categories(self):
-        funds = [{"schemeCode": "1", "schemeCategory": "Thematic"}]
-        with patch.object(mf_comparison.cache_service, "get_or_fetch", AsyncMock(return_value=SimpleNamespace(value=funds))):
-            result = await mf_comparison.get_mf_comparison("Large Cap", refresh=False)
-        self.assertEqual(result["funds"], [])
-        self.assertIsNone(result["dataAsOf"])
-
-    async def test_fund_comparison_accepts_current_category_and_nav_fields(self):
-        funds = [
-            {"schemeCode": "1001", "schemeName": "Matched fund", "schemeCategoryLabel": "Equity Scheme - Large Cap Fund"},
-            {"schemeCode": "1002", "schemeName": "Different fund", "schemeCategoryLabel": "Equity Scheme - Large & Mid Cap Fund"},
-        ]
-        with (
-            patch.object(mf_comparison.cache_service, "get_or_fetch", AsyncMock(return_value=SimpleNamespace(value=funds))),
-            patch.object(mf_comparison, "_fetch_fund_detail", AsyncMock(return_value={
-                "latestNav": 123.456, "latestNavDate": "2026-11-20", "planName": "Direct Plan",
-            })) as detail,
-        ):
-            result = await mf_comparison.get_mf_comparison("Large Cap", refresh=False)
-        self.assertEqual(detail.await_count, 1)
-        self.assertEqual(result["fundCount"], 1)
-        self.assertEqual(result["funds"][0]["nav"], 123.456)
-        self.assertEqual(result["funds"][0]["navDate"], "2026-11-20")
-        self.assertIsNone(result["funds"][0]["cagr"]["1Y"])
-
-    async def test_sectoral_funds_are_discovered_by_name_and_filtered_by_category_label(self):
-        async def read(_client, path, params):
-            if path.startswith("scheme-code/"):
-                return {"latestNav": 97.25}
-            self.assertNotEqual(params["schemeName"], "Sectoral/Thematic")
-            return [
-                {"schemeCode": "101", "schemeName": "Matched fund", "schemeCategoryLabel": "Equity Scheme - Sectoral/ Thematic"},
-                {"schemeCode": "102", "schemeName": "Index fund", "schemeCategoryLabel": "Index Funds - Equity Funds"},
-            ]
-
-        with patch.object(mf_comparison, "_read", side_effect=read):
-            result = await mf_comparison.get_mf_comparison("Sectoral/Thematic", refresh=True)
-        self.assertEqual([fund["schemeCode"] for fund in result["funds"]], ["101"])
 
     async def test_disabled_market_never_calls_either_nse_server(self):
         with (

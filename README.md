@@ -1,138 +1,186 @@
 # Finance Agent
 
-Finance Agent imports Indian broker statements, tracks trades, generates portfolio reports, answers portfolio questions, and provides stock and mutual fund research.
+Finance Agent is a portfolio tracker and research app for Indian equities and mutual funds. Import broker statements, record trades, track holdings and profit and loss, and use the same portfolio facts in the dashboard, advisory reports, and Q&A.
 
-Next.js owns sessions and application data. FastAPI handles statement parsing, market research, and LangGraph workflows. Both services use Supabase Postgres. See [AGENTS.md](AGENTS.md) for the phased architecture plan.
+## Features
 
-## Local setup
+- **Portfolio and trades** — Preview and confirm PDF, CSV, XLSX, or XLS broker statements. Spreadsheets with recognized holdings columns parse locally. Review unrecognized rows, track trades, and see invested cost, quoted market value, and realized and unrealized P&L.
+- **Reports and Q&A** — Stream portfolio risk reports and save them to your account. Ask about your holdings, general finance, or a current or historical stock quote. Q&A cites the evidence it used and flags missing information.
+- **Stocks** — Browse NSE market movers, search for symbols, and view timestamped quotes, daily charts, and stock fundamentals.
+- **Mutual funds** — Compare schemes by equity category. MFapi.in supplies each scheme’s latest available NAV and NAV date. CAGR, risk ratios, P/E, and expense ratio display as unavailable.
 
-Use Node.js 22 or newer and Python 3.11 or newer. Install the AI service dependencies from the repository root.
+## Architecture
+
+```mermaid
+flowchart LR
+    Browser --> Next["Next.js · UI, sessions, and API routes"]
+    Next --> DB[("Supabase Postgres")]
+    Next --> API["FastAPI · parsing, trade review, market data"]
+    API --> DB
+    API --> Graph["LangGraph · reports and Q&A"]
+    API --> Data["NSE MCP, MFapi.in, Screener, NewsAPI"]
+    Graph --> Groq["Groq"]
+    Eval["Synthetic Q&A evaluations"] --> Graph
+```
+
+Next.js derives the user ID from the authenticated session and owns account data, holdings, trade writes, and saved reports. FastAPI validates its internal service key and uses Postgres for the provider cache. Models handle extraction, ambiguous questions, and explanations. Application code computes portfolio arithmetic and enforces trade constraints.
+
+| Path | Contents |
+| --- | --- |
+| [frontend/](frontend/) | Next.js UI, authenticated routes, and portfolio accounting |
+| [ai-service/src/](ai-service/src/) | FastAPI, market-data adapters, and LangGraph workflows |
+| [ai-service/migrations/](ai-service/migrations/) | Postgres schema migrations |
+| [ai-service/evals/](ai-service/evals/) | Versioned synthetic Q&A cases and Ragas thresholds |
+| [AGENTS.md](AGENTS.md) | Architecture migration plan and phase verification history |
+
+## Run locally
+
+These commands use Windows PowerShell. Use Node.js 22 or newer, Python 3.11 or newer, and a Supabase Postgres project or a local Postgres instance for development.
+
+### 1. Install dependencies
+
+From the repository root:
 
 ```powershell
 py -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r ai-service/requirements.txt
-```
-
-Install the frontend dependencies from its own directory.
-
-```powershell
 Set-Location frontend
 npm ci
 ```
 
-Create a Supabase staging project. Apply [001_init.sql](ai-service/migrations/001_init.sql) and [002_statement_imports.sql](ai-service/migrations/002_statement_imports.sql), in that order, through the SQL Editor or `psql` with `ON_ERROR_STOP=1`. The migration creates the private `finance_agent` schema. Keep it out of the Data API's exposed schemas.
+### 2. Prepare Postgres
 
-Use the same Postgres database in both environments. On an IPv4 network, choose **Session pooler** in Supabase Connect. Download the Supabase CA from Database Settings and save it locally, for example under `ai-service/.certs/`. Use `sslmode=verify-full` and set `sslrootcert` to the URL-encoded absolute certificate path in both connection strings. Use the database owner for migrations. Keep connection strings out of browser code and version control. [Supabase connection guide](https://supabase.com/docs/guides/database/connecting-to-postgres) · [Supabase TLS settings](https://supabase.com/docs/guides/platform/ssl-enforcement)
+Apply [001_init.sql](ai-service/migrations/001_init.sql), then [002_statement_imports.sql](ai-service/migrations/002_statement_imports.sql), using the database owner. Use the Supabase SQL Editor or run the files with `psql` and `ON_ERROR_STOP=1`. Keep the `finance_agent` schema private. Both services connect to the same database.
 
-`frontend/.env.local`
+For hosted Supabase over IPv4, use the Session pooler. Download the project CA and use `sslmode=verify-full` with `sslrootcert` set to the URL-encoded absolute certificate path in both database URLs. [Supabase connection guide](https://supabase.com/docs/guides/database/connecting-to-postgres) · [Supabase TLS settings](https://supabase.com/docs/guides/platform/ssl-enforcement)
+
+### 3. Configure the services
+
+Create `frontend/.env.local`.
 
 ```dotenv
 SUPABASE_DB_URL=<Postgres connection string>
-FASTAPI_URL=http://localhost:8000
+FASTAPI_URL=http://127.0.0.1:8000
 INTERNAL_API_KEY=<shared random secret>
 SESSION_PASSWORD=<random 64-character hexadecimal secret>
 ```
 
-`ai-service/.env`
+Create `ai-service/.env`.
 
 ```dotenv
-SUPABASE_DB_URL=<Postgres connection string>
-INTERNAL_API_KEY=<same shared random secret>
-GROQ_API_KEY=<Groq key>
+SUPABASE_DB_URL=<same Postgres connection string>
+INTERNAL_API_KEY=<same shared secret>
+GROQ_API_KEY=<Groq API key>
+NSE_MARKET_DATA=true
 ```
 
-Groq powers statement extraction, Q&A, and advisory explanations. `NEWSAPI_KEY` configures the optional NewsAPI source. Serve production deployments over HTTPS so the secure session cookie can be sent. Changing the session password invalidates existing cookies.
-
-Generate a session secret with the command below, set it in `frontend/.env.local`, and restart Next.js. Hexadecimal output avoids Next.js expanding dollar signs in the value. If a PowerShell environment variable named `SESSION_PASSWORD` is set, it takes precedence over the file.
+Run the following command twice to generate independent values for `INTERNAL_API_KEY` and `SESSION_PASSWORD`. Keep these values and the database connection string out of version control. Rotating `SESSION_PASSWORD` invalidates existing sessions. Serve deployed frontend traffic over HTTPS so browsers can send the secure session cookie.
 
 ```powershell
 node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
 ```
 
-Run FastAPI from the repository root in one terminal.
+| Setting | Purpose |
+| --- | --- |
+| `GROQ_API_KEY` | Extraction for PDFs and other statement layouts, and model-powered Q&A and report explanations |
+| `NSE_MARKET_DATA` | Enables both NSE MCP feeds. A fresh checkout defaults to disabled. |
+| `NSE_QUOTE_MAX_AGE_SECONDS` | Quote freshness threshold. Defaults to 360 seconds. |
+| `NSE_MCP_TIMEOUT_SECONDS` | Per-call NSE MCP timeout. Defaults to 15 seconds. |
+| `NEWSAPI_KEY` | Enables the optional NewsAPI source for market context. |
+| `MFAPI_BASE_URL` | Defaults to `https://api.mfapi.in`. MFapi.in requires no API key. |
+
+### 4. Start the app
+
+Open two terminals at the repository root. Start FastAPI in the first.
 
 ```powershell
 Set-Location ai-service
 ..\.venv\Scripts\python.exe -m uvicorn src.api.main:app --loop asyncio:SelectorEventLoop --host 127.0.0.1 --port 8000
 ```
 
-In a second PowerShell terminal, start Next.js from `frontend`.
+Start Next.js in the second.
 
 ```powershell
 Set-Location frontend
 npm run dev
 ```
 
-Open the website at `http://localhost:3000`, or use the URL printed by Next.js if it selects a different port. Port 8000 runs FastAPI. Its root page links to the local website, and `http://127.0.0.1:8000/health` checks the service. A browser request to `/docs` returns 403 because API documentation requires the internal service key.
+Open **http://localhost:3000** and sign in or register. The FastAPI health check is at **http://127.0.0.1:8000/health**. FastAPI’s OpenAPI documentation and private endpoints require the internal service key.
 
-## SQLite migration and rollback
+## Data and accounting
 
-1. Pause writes in the legacy app, make a consistent SQLite backup using SQLite's backup facility, and keep the legacy checkout and configuration. Include WAL contents in the backup by using the backup facility instead of copying only the main database file while it is active.
-2. Inspect the backup with a dry run. It validates source data and does not open a Postgres connection.
+| Data | Source and behavior |
+| --- | --- |
+| Current quotes and market movers | **NSE CM Market Live**. The app shows the exchange’s trade timestamp and labels older quotes as last published or delayed as applicable. |
+| Daily charts, symbol lookup, and exact-date closes | **NSE Bhavcopy**. An exact-date Q&A lookup requires a trading session. Charts show raw closes and include a split- and bonus-adjusted return when corporate action data is available. |
+| Fund categories and NAVs | **MFapi.in**. Each listed scheme is checked against the provider’s category and displays its own latest NAV date. |
+| Stock fundamentals and news | **Screener** for stock fundamentals and **NewsAPI** for optional market news. |
 
-   ```powershell
-   .\.venv\Scripts\python.exe ai-service/scripts/import_sqlite.py --source <backup.db>
-   ```
+The public NSE feeds are enabled here for an informational, non-commercial portfolio demo. A commercial deployment needs an appropriately licensed provider. [NSE MCP terms](https://www.nseindia.in/nse-mcp) · [NSE market data subscriptions](https://www.nseindia.com/static/nse-data-and-analytics/data-information-vending)
 
-3. Confirm the database in `SUPABASE_DB_URL` before transfer. Rehearse on staging with synthetic data or an authorized backup. Run the import and then verify its contents.
+- The latest confirmed statement by coverage date supplies the starting inventory. Manual trades strictly after that date are replayed in trade-date and entry order. Older snapshots without coverage dates retain their entry-timestamp cutoff. Reconfirming the same file reuses the first successful import. PDF files need a readable text layer.
+- Weighted-average acquisition cost governs partial sales and realized P&L. A reopened position starts a new cost basis. The write endpoint rejects sales that exceed available holdings. Fees and tax-lot accounting are outside the calculation.
+- Statement quotes retain their source and as-of date. If an active holding lacks a quote, aggregate quoted market value and unrealized P&L are unavailable. Reports show dated public quotes separately from statement accounting.
+- Dashboard and report risk share the same invested-cost concentration rules. A single holding is medium risk from 25% and high from 40%. A known sector is medium from 45% and high from 60%.
+- Reports show the two largest cost weights together and the percentage of invested cost with a known sector. They flag matching realized-trade rows for review and preserve the recorded totals. Groq can explain the concentration flags using anonymous risk types. The same follow-up checks are available when the model is offline.
+- Public report context includes an exchange-timestamped NIFTY 50 snapshot from NSE CM Market Live. Optional headlines come from Google News RSS or NewsAPI, cover the last 30 days, and favor coverage across the largest stock positions. Each displayed story has a publisher, publication date, and link.
+- Q&A can return the latest available quote or one trading date’s close using `YYYY-MM-DD`. Use the Stocks detail page for the daily chart. Multi-session history, moving averages, and corporate-action lists are unavailable in chat.
 
-   ```powershell
-   .\.venv\Scripts\python.exe ai-service/scripts/import_sqlite.py --source <backup.db> --execute
-   .\.venv\Scripts\python.exe ai-service/scripts/import_sqlite.py --source <backup.db> --verify
-   ```
+## Testing and migration status
 
-   The importer keeps original IDs, hashes, timestamps, and JSON. It verifies the imported rows inside one transaction and rolls back if a conflicting row differs. Retry with the same backup is safe. The provider cache starts fresh.
-
-4. Verify login for an imported account, representative snapshots and reports, and writes after the services restart. Point the deployment at the confirmed production database only after staging checks pass. Before reopening writes, rollback is the previous deployment with the preserved SQLite backup. If Postgres has accepted writes, pause again and reconcile that data before rollback.
-
-## Portfolio and statement rules
-
-- PDF files need a readable text layer. CSV, XLSX, and XLS readers process complete rows in bounded batches. The preview identifies unrecognized rows and lets the user confirm the statement end date. The first successful confirmation of a given file is reused for that account.
-- The latest confirmed statement by coverage date supplies starting inventory. Replay manually entered trades strictly after that date, in trade-date and entry order. The as-of date is inclusive. For imported legacy snapshots without coverage dates, preserve the legacy entry-timestamp cutoff. With no statement, trades establish the positions.
-- Holdings use weighted-average acquisition cost. Partial sales realize P&L for the sold quantity, and reopening starts a new cost basis. Fees, tax-lot accounting, and manual trades before the selected statement's coverage are outside this computation. A new statement supplies the baseline realized history available from that statement. Legacy oversells that cannot be replayed are shown as trade-log issues.
-- Quotes have their statement source and as-of date. Quoted market value and unrealized P&L remain unavailable when any active holding lacks a quote. A legacy price equal to acquisition cost with unknown provenance is treated as unavailable.
-- Dashboard and report risk use the same invested-cost concentration rules. A single holding is medium from 25% and high from 40%. A known sector is medium from 45% and high from 60%. Missing cost makes the calculation unavailable. The trade write endpoint enforces available quantity regardless of the advisory model response.
-
-## Q&A and NSE market data
-
-Reports and Q&A use separate LangGraph workflows and stream completed steps. Next.js saves the finished report in Postgres before forwarding the completion event. Trade review calls a service directly for deterministic checks and optional advice. Q&A classifies the question, selectively retrieves structured account or market records, checks the evidence, and cites it. Pure quote questions render directly from the provider's price and timestamp. Historical quotes require a trading date in `YYYY-MM-DD` format.
-
-For informational, non-commercial use permitted by NSE, set `NSE_MARKET_DATA=true` in `ai-service/.env` and restart FastAPI. Stocks, public-market Q&A, and report enrichment share the NSE CM Market Live quote adapter. NSE Bhavcopy handles symbol lookup, daily charts, exact-date closes, and corporate actions. Search by NSE ticker for the most reliable matches. The chart shows unadjusted closes and reports a split- and bonus-adjusted price return when the corporate-action data and factors are available. Market timestamps are displayed in IST. [NSE MCP documentation and terms](https://www.nseindia.in/nse-mcp)
-
-The local portfolio project uses the public feed for informational, non-commercial use. A fresh checkout defaults to disabled until configured. Commercial use requires a provider agreement covering quotes, historical prices, and corporate actions. [NSE market data subscriptions](https://www.nseindia.com/static/nse-data-and-analytics/data-information-vending)
-
-Stocks, Q&A, and report enrichment call [MarketDataService](ai-service/src/services/market_data.py), which selects the NSE MCP adapter in informational mode. To add a licensed feed, implement `MarketDataProvider` and register it in that service. The contract covers quotes, market-mover rankings, symbol lookup, daily history, and exact-date closes.
-
-Stocks uses the provider’s market-movers ranking and displays each stock’s quote timestamp separately from the ranking. `NSE_QUOTE_MAX_AGE_SECONDS` controls when a quote is labeled recent and defaults to 360. `NSE_MCP_TIMEOUT_SECONDS` sets the per-call MCP timeout and defaults to 15. Stock fundamentals use the requested exchange symbol with Screener. Fund comparisons return matching categories and leave the data date unknown when the provider does not supply a common date.
-
-Funds displays each scheme’s latest NAV and NAV date from FinAPI. Additional return, risk, and expense metrics appear when the provider supplies them. Set `FINAPI_UPVALY_API_KEY` in `ai-service/.env` if your FinAPI account includes access to those fields. [FinAPI plans and data coverage](https://finapi.upvaly.com/)
-
-Market Q&A can answer “What is the latest available price of INFY?” and can look up one closing price using a date in `YYYY-MM-DD` format. Use the Stocks detail page for the one-month daily chart. Multi-session history, moving-average comparisons, and corporate-action lists are unavailable as chat answers.
-
-## Verification
-
-Run frontend unit tests with `node --test frontend/tests/api.test.mjs frontend/tests/portfolio.test.mjs`.
-
-Set `SUPABASE_TEST_DB_URL` to a **disposable, migrated database** before running the frontend smoke test. It creates synthetic users and trades. FastAPI is stubbed for this test.
+Run the frontend unit tests from the repository root.
 
 ```powershell
-node frontend/tests/smoke.mjs
+node --test frontend/tests/api.test.mjs frontend/tests/portfolio.test.mjs
 ```
 
-Install the optional backend test dependencies and run the checks from the repository root. With `SUPABASE_TEST_DB_URL` set, the suite also exercises report streaming and real Postgres cache operations across an application restart.
+Run the backend tests and deterministic Q&A fixtures.
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -r ai-service/requirements-dev.txt
 Set-Location ai-service
 ..\.venv\Scripts\python.exe -m unittest discover -s tests -v
+..\.venv\Scripts\python.exe -m evals.run
 ```
 
-Run deterministic Q&A fixtures from `ai-service` using `..\.venv\Scripts\python.exe -m evals.run`. The fixtures exercise the production graph with synthetic portfolios and quotes. GitHub Actions runs these checks without provider keys.
+Set `SUPABASE_TEST_DB_URL` to a **disposable, migrated Postgres database** to include the backend restart and cache persistence test. The production frontend smoke test uses the same variable and a stub FastAPI upstream. Build Next.js first, then run the smoke test from the repository root.
 
-For model-judged scores, install `requirements-eval.txt`, set `EVAL_API_KEY` and `EVAL_MODEL`, and run:
+```powershell
+Push-Location frontend
+npm run build
+Pop-Location
+node frontend/tests/smoke.mjs --production
+```
+
+The [Q&A evaluations workflow](.github/workflows/qa-evals.yml) runs deterministic checks without provider credentials. To run the model-judged suite locally, install [requirements-eval.txt](ai-service/requirements-eval.txt), export `GROQ_API_KEY`, `EVAL_API_KEY`, and `EVAL_MODEL`, and set `EVAL_BASE_URL` if your evaluator uses an OpenAI-compatible endpoint. Run from `ai-service/`.
 
 ```powershell
 ..\.venv\Scripts\python.exe -m evals.run --live-answer --judge --thresholds evals/thresholds-v1.json --output ragas-report.json
 ```
 
-`GROQ_API_KEY` configures the live answer model. Set `EVAL_BASE_URL` if the evaluation model uses an OpenAI-compatible provider. The report includes per-case checks and Ragas averages grouped by intent. The versioned thresholds gate faithfulness, context precision, and context recall. Factual correctness is reported separately for review. The `QA evaluations` workflow supports a manual Ragas run with the same thresholds. Use `--case CASE_ID` to retry a case and `--judge-timeout SECONDS` to adjust the per-case scoring limit for a slow judge.
+The Ragas run gates faithfulness, context precision, and context recall, and reports factual correctness. `--case CASE_ID` retries one case and `--judge-timeout SECONDS` adjusts its scoring deadline.
+
+| Phase | Status |
+| --- | --- |
+| 1–4 · API boundary, Postgres, accounting, and LangGraph | Implemented and verified. |
+| 5 · Q&A evaluations | All 12 deterministic cases pass. A complete live Ragas run remains pending after judge timeouts and rate limiting. |
+| 6 · Market data cutover | Both NSE adapters returned INFY data for 20 November 2026. MFapi.in returned dated NAVs for all 12 fund categories. The production frontend build and API smoke test, all 27 backend tests, and all eight frontend unit tests passed. |
+
+## Migrate an existing SQLite database
+
+1. Pause legacy writes. Create a consistent SQLite backup with SQLite’s backup facility and retain the legacy checkout and configuration for rollback.
+2. Dry-run the import from the repository root. This validates the backup without opening a Postgres connection.
+
+   ```powershell
+   .\.venv\Scripts\python.exe ai-service/scripts/import_sqlite.py --source ".\backup.db"
+   ```
+
+3. Confirm `SUPABASE_DB_URL` targets the intended migrated database. Rehearse on staging with synthetic data or an authorized backup. Execute and verify the import.
+
+   ```powershell
+   .\.venv\Scripts\python.exe ai-service/scripts/import_sqlite.py --source ".\backup.db" --execute
+   .\.venv\Scripts\python.exe ai-service/scripts/import_sqlite.py --source ".\backup.db" --verify
+   ```
+
+4. Verify an imported sign-in, representative snapshots and reports, and persistence after restarting the services. The importer preserves IDs, password hashes, ownership, timestamps, and report JSON. Matching reimports are safe and conflicting rows roll back the transaction.
+5. Before reopening writes, rollback consists of restoring the legacy deployment with the preserved SQLite backup. If Postgres has accepted writes, pause and reconcile them before rolling back.

@@ -63,6 +63,8 @@ Offline Ragas suite -> same Q&A graph with synthetic cases and reference answers
 
 **Verification status** — The API smoke and regression suites cover the replay, ownership, and statement retry rules. PDF, CSV, XLSX, and XLS reading passed synthetic fixtures. Groq extracted a synthetic statement with the expected coverage date and missing price.
 
+**Spreadsheet extraction** — Recognized holdings tables parse locally and use the shared row validation. Other layouts use model JSON output with smaller spreadsheet batches, a bounded rate-limit retry, and one retry for malformed or truncated output. Parser logs identify extraction failure reasons without logging statement contents. A synthetic workbook without a default style reproduced the openpyxl warning and returned HTTP 200 with all 105 rows. The backend suite passed with its Postgres lifecycle test skipped because no test database was configured for this run.
+
 ## Phase 4 — Rebuild LangGraph routing and Q&A grounding
 
 ```text
@@ -82,6 +84,10 @@ FastAPI -> workflow by authenticated route
 **Exit checks** — Fixtures cover portfolio-only, general finance, public quote for a held symbol, mixed, follow-up, ambiguous, and empty-portfolio questions. Route and evidence assertions pass. Missing facts produce an explicit limitation and citations resolve to the evidence used.
 
 **Architecture cleanup** — Removed the single-node trade graph, legacy embedding retrieval, and report checkpoint writes. Report generation has one forward flow and the completed report is stored by Next.js. Legacy checkpoint tables are outside the runtime path. Reports and Q&A use the same portfolio-summary helper. Dated public quotes appear separately from statement-based accounting in reports.
+
+**Report evidence** — Reports use the shared concentration policy for flag severity, combined top-two exposure, and known-sector coverage. The model receives anonymous flag IDs and risk types for optional explanations. Follow-up checks stay available when the model fails. Reports flag matching realized-trade records for review while preserving the original accounting. Market context includes the NSE CM Market Live NIFTY 50 snapshot and recent dated headlines across holdings.
+
+**Report verification** — All 34 backend tests passed against disposable Postgres, along with the production frontend build and API smoke test and eight frontend unit tests. The application received the NIFTY 50 snapshot on retry with the exchange timestamp, fetched dated TCS headlines from Google News RSS, and generated an explanation from a synthetic risk flag with Groq.
 
 **Verification status** — All 21 Python tests passed against disposable Postgres, including report streaming and cache persistence across a restart. All 12 deterministic Q&A cases, eight frontend tests, and the frontend API smoke test passed.
 
@@ -118,3 +124,7 @@ FastAPI -> workflow by authenticated route
 **Market movers verification** — The direct adapter returned two live-feed gainers, two losers, and a timestamped quote for a ranked stock. The first direct request timed out during MCP validation and passed after the timeout was made configurable. The focused regression suite and production frontend build passed.
 
 **Portfolio demo fixes** — Qualified the trade-list date in Postgres and verified ordered, owner-scoped history in the production API smoke test. FinAPI’s current category label and per-scheme NAV dates are used in fund comparisons. Live checks against the local backend returned ten stock movers, a timestamped INFY quote, and twelve schemes each for Large Cap and Sectoral/Thematic. The local Next.js health proxy and favicon returned HTTP 200.
+
+**Mutual fund provider** — Restored MFapi.in as the sole mutual fund provider for Funds and report metadata. Funds uses the scheme catalog for discovery and confirms each scheme’s category and NAV date with its latest-NAV endpoint. Reports use the catalog to resolve fund ISINs. Removed the Upvaly integration and its API key setting. CAGR, risk ratios, P/E, and expense ratio now display as unavailable.
+
+**22 November 2026 verification** — Both NSE MCP connectors and the app adapters returned INFY data for the 20 November session. Authenticated Funds checks returned dated NAVs across all 12 categories, and a live report metadata lookup resolved a fund ISIN. All 27 backend tests passed against disposable Postgres. The production frontend build and API smoke test, eight frontend unit tests, and 12 deterministic Q&A cases passed. The full live Ragas run is still pending. Evaluator credentials were unavailable for this verification.

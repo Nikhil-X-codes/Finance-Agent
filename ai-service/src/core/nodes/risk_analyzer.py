@@ -10,6 +10,11 @@ def analyze_portfolio_risk(state: ReportState) -> dict[str, Any]:
     result = assess_portfolio_risk(state.get("normalized_holdings") or [])
     return {
         "overall_risk": result["overall_risk"],
+        "concentration": {
+            "sectorCoverage": result["sector_coverage"],
+            "largestHoldings": result["largest_holdings"],
+            "topTwoWeight": result["top_two_weight"],
+        },
         "risk_flags": [
             {
                 "flag_type": flag["type"],

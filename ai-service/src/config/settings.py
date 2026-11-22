@@ -30,7 +30,7 @@ def _int_env(name: str, default: int) -> int:
 class Settings:
     groq_api_key: str = os.getenv("GROQ_API_KEY", "")
     internal_api_key: str = os.getenv("INTERNAL_API_KEY", "")
-    newsapi_key: str = os.getenv("NEWSAPI_KEY", "")
+    newsapi_key: str = os.getenv("NEWSAPI_KEY") or os.getenv("NEWS_API_KEY", "")
     supabase_db_url: str = os.getenv("SUPABASE_DB_URL", "")
     groq_model: str = os.getenv("GROQ_MODEL", "openai/gpt-oss-20b")
     report_rate_limit_per_minute: int = _int_env(
@@ -45,8 +45,7 @@ class Settings:
     mf_metadata_cache_ttl_seconds: int = _int_env(
         "MF_METADATA_CACHE_TTL_SECONDS", MF_METADATA_CACHE_TTL_SECONDS
     )
-    finapi_base_url: str = os.getenv("FINAPI_BASE_URL", "https://api.mfapi.in")
-    finapi_upvaly_api_key: str = os.getenv("FINAPI_UPVALY_API_KEY", "")
+    mfapi_base_url: str = os.getenv("MFAPI_BASE_URL", "https://api.mfapi.in")
     groq_failure_threshold: int = _int_env("GROQ_FAILURE_THRESHOLD", GROQ_FAILURE_THRESHOLD)
     groq_circuit_reset_seconds: int = _int_env("GROQ_CIRCUIT_RESET_SECONDS", GROQ_CIRCUIT_RESET_SECONDS)
     max_pdf_size_bytes: int = _int_env("MAX_PDF_SIZE_BYTES", MAX_PDF_SIZE_BYTES)

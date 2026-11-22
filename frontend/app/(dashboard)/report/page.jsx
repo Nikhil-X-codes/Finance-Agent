@@ -332,7 +332,7 @@ function ReportContent() {
           <CardContent className="space-y-4">
             <Progress value={markdown ? 80 : 30} className="h-1.5" />
             <p className="text-xs text-slate-400">
-              The graph is currently fetching live circulars and running RAG recommendations.
+              Checking public market context and preparing the portfolio concentration review.
             </p>
           </CardContent>
         </Card>
@@ -381,13 +381,13 @@ function ReportContent() {
                 {/* Summary Card */}
                 <Card className="border-slate-800 bg-slate-900/40">
                   <CardHeader>
-                    <CardTitle className="text-sm font-semibold">Risk Summary</CardTitle>
+                    <CardTitle className="text-sm font-semibold">Concentration Summary</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs text-slate-400">Risk Level</span>
+                      <span className="text-xs text-slate-400">Concentration Level</span>
                       <span className={`rounded px-2.5 py-0.5 text-xs font-semibold border ${getRiskBadgeColor(report.portfolioSummary?.overallRiskLevel)}`}>
-                        {report.portfolioSummary?.overallRiskLevel || "LOW"}
+                        {report.portfolioSummary?.overallRiskLevel || "UNAVAILABLE"}
                       </span>
                     </div>
                     <div className="flex items-center justify-between">
@@ -454,7 +454,7 @@ function ReportContent() {
                 {report.recommendations?.length > 0 && (
                   <Card className="border-slate-800 bg-slate-900/40">
                     <CardHeader>
-                      <CardTitle className="text-sm font-semibold">Top Actions</CardTitle>
+                      <CardTitle className="text-sm font-semibold">Follow-up Checks</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-3">
                       {report.recommendations.map((rec, i) => (
@@ -464,10 +464,10 @@ function ReportContent() {
                             <span className={`text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded ${
                               rec.action === "TRIM" ? "bg-red-950 text-red-400 border border-red-900/30" : "bg-sky-950 text-sky-400 border border-sky-900/30"
                             }`}>
-                              {rec.action}
+                              {rec.action?.replaceAll("_", " ")}
                             </span>
                           </div>
-                          <p className="text-[11px] leading-relaxed text-slate-400">{rec.reasoning}</p>
+                          <p className="text-[11px] leading-relaxed text-slate-400">{rec.nextCheck || rec.reasoning}</p>
                         </div>
                       ))}
                     </CardContent>

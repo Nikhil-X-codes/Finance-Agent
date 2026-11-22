@@ -28,6 +28,12 @@ export async function POST(request) {
     const upstream = await fetch(`${baseUrl}/parse-statement`, {
       method: "POST", headers: { "X-Internal-Key": process.env.INTERNAL_API_KEY || "" }, body,
     });
+    if (upstream.status === 503) {
+      return NextResponse.json({
+        error: "Statement extraction is temporarily unavailable. Please try again shortly.",
+        code: "PARSE_UNAVAILABLE",
+      }, { status: 503 });
+    }
     if (!upstream.ok) {
       const response = await upstream.json().catch(() => ({}));
       return NextResponse.json({

@@ -7,6 +7,8 @@ from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import AsyncMock, patch
 
+from groq import RateLimitError
+import httpx
 from openpyxl import Workbook
 from pypdf import PdfWriter
 from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
@@ -21,10 +23,91 @@ from src.core.graph import create_report_graph
 from src.services.market_data import market_data
 from src.services.pdf_service import PDFService
 from src.services.spreadsheet_service import SpreadsheetService
-from src.services.statement_extraction import StatementExtraction, validate_extractions
+from src.services.statement_extraction import StatementExtraction, parse_sections, validate_extractions
 
 
 class StatementFixtures(unittest.TestCase):
+    def test_standard_spreadsheet_does_not_require_groq(self):
+        with TemporaryDirectory() as directory:
+            workbook = Workbook()
+            sheet = workbook.active
+            sheet.append([None, "Holdings Statement"])
+            sheet.append([None, "Holdings as on", "2026-11-20"])
+            sheet.append(["Trading Symbol", "ISIN", "Qty", "Avg. Buy Price", "LTP", "Unrealised P&L %"])
+            sheet.append(["TCS", "INE467B01029", 2, 2500, 2700, 8])
+            sheet.append(["TCS", "INE467B01029", 3, 2530, None])
+            sheet.append(["INFY", None, 9, None, None])
+            path = Path(directory) / "holdings.xlsx"
+            workbook.save(path)
+            workbook.close()
+            with patch("src.services.spreadsheet_service.parse_sections") as parse:
+                result = SpreadsheetService().parse_statement(str(path))
+            parse.assert_not_called()
+        self.assertEqual(result.coverage_end.isoformat(), "2026-11-20")
+        self.assertEqual([(row.ticker, row.quantity) for row in result.holdings], [("TCS", 2), ("TCS", 3)])
+        self.assertEqual(result.holdings[0].isin, "INE467B01029")
+        self.assertEqual(result.holdings[0].current_price, 2700)
+        self.assertIsNone(result.holdings[1].current_price)
+        self.assertEqual(len(result.unrecognized_rows), 1)
+
+    def test_rate_limited_batch_retries_without_reprocessing_prior_batches(self):
+        request = httpx.Request("POST", "https://example.test")
+        limited = RateLimitError(
+            "rate limit", response=httpx.Response(429, headers={"Retry-After": "2"}, request=request), body=None,
+        )
+        response = SimpleNamespace(
+            content='{"holdings":[{"ticker":"TCS","quantity":2,"avg_buy_price":100}]}',
+            response_metadata={"finish_reason": "stop"},
+        )
+        with (
+            patch("src.services.statement_extraction.settings", SimpleNamespace(groq_api_key="fixture", groq_model="fixture")),
+            patch("src.services.statement_extraction.ChatGroq") as chat,
+            patch("src.services.statement_extraction.sleep") as wait,
+        ):
+            invoke = chat.return_value.bind.return_value.invoke
+            invoke.side_effect = [response, limited, response]
+            parsed = parse_sections(["first batch", "second batch"])
+        self.assertEqual(len(parsed.holdings), 2)
+        self.assertEqual([call.args[0][-1][1] for call in invoke.call_args_list], [
+            "first batch", "second batch", "second batch",
+        ])
+        wait.assert_called_once_with(2)
+
+    def test_json_extraction_validates_rows_and_rejects_truncated_output(self):
+        response = SimpleNamespace(
+            content='{"holdings":[{"ticker":"TCS","quantity":2,"avg_buy_price":100}]}',
+            response_metadata={"finish_reason": "stop"},
+        )
+        with (
+            patch("src.services.statement_extraction.settings", SimpleNamespace(groq_api_key="fixture", groq_model="fixture")),
+            patch("src.services.statement_extraction.ChatGroq") as chat,
+        ):
+            chat.return_value.bind.return_value.invoke.return_value = response
+            parsed = parse_sections(["Ticker,Quantity,Average Buy Price\nTCS,2,100"])
+            chat.return_value.bind.assert_called_once_with(response_format={"type": "json_object"})
+            self.assertEqual(parsed.holdings[0].quantity, 2)
+            self.assertIsNone(parsed.holdings[0].current_price)
+
+            response.response_metadata["finish_reason"] = "length"
+            with self.assertRaisesRegex(RuntimeError, "output limit"):
+                parse_sections(["Statement rows"])
+
+            response.response_metadata["finish_reason"] = "stop"
+            response.content = '{"holdings":['
+            with self.assertRaisesRegex(RuntimeError, "invalid JSON data"):
+                parse_sections(["Statement rows"])
+
+            invoke = chat.return_value.bind.return_value.invoke
+            invoke.reset_mock()
+            invoke.side_effect = [response, SimpleNamespace(
+                content='{"holdings":[{"ticker":"TCS","quantity":2,"avg_buy_price":100}]}',
+                response_metadata={"finish_reason": "stop"},
+            )]
+            parsed = parse_sections(["Statement rows"])
+            self.assertEqual(len(parsed.holdings), 1)
+            self.assertEqual(invoke.call_count, 2)
+            self.assertIn("compact JSON", invoke.call_args.args[0][0][1])
+
     def test_all_supported_formats_extract_rows(self):
         with TemporaryDirectory() as directory:
             folder = Path(directory)
@@ -67,7 +150,7 @@ class StatementFixtures(unittest.TestCase):
                     sections = parse.call_args.args[0]
                     self.assertIn("TCS,4", "\n".join(sections))
                     if path == csv:
-                        self.assertEqual(len(sections), 2)
+                        self.assertEqual(len(sections), 7)
                         self.assertIn("TCS,4", sections[-1])
 
             with patch("src.services.pdf_service.parse_sections") as parse:

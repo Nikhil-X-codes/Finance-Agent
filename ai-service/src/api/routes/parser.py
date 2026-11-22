@@ -1,5 +1,6 @@
 """Statement parsing API routes."""
 
+import logging
 import os
 import tempfile
 from pathlib import Path
@@ -10,8 +11,10 @@ from starlette.concurrency import run_in_threadpool
 from src.config.settings import settings
 from src.services.pdf_service import PDFService
 from src.services.spreadsheet_service import SpreadsheetService
+from src.services.statement_extraction import StatementExtractionError
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 ALLOWED_SUFFIXES = {".pdf", ".xlsx", ".xls", ".csv"}
 
 
@@ -34,7 +37,14 @@ async def parse_statement(file: UploadFile = File(...)) -> dict:
             result = await run_in_threadpool(service.parse_statement, path)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except StatementExtractionError as exc:
+            logger.warning("Statement extraction failed (format=%s, reason=%s)", suffix, exc.code)
+            raise HTTPException(status_code=503, detail="Statement extraction is temporarily unavailable.") from exc
         except Exception as exc:
+            logger.warning(
+                "Statement extraction failed (format=%s, error=%s, status=%s)",
+                suffix, type(exc).__name__, getattr(exc, "status_code", None),
+            )
             raise HTTPException(status_code=503, detail="Statement extraction is temporarily unavailable.") from exc
 
     payload = result.model_dump(mode="json")

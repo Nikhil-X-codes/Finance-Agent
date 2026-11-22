@@ -245,9 +245,32 @@ async def _historical_close(symbol: str, when: date) -> dict:
     }
 
 
+async def _index_snapshot() -> dict:
+    source = "NSE CM Market Live"
+
+    async def fetch():
+        payload = await _tool(LIVE, "cm_get_index_quote", {"indexName": "NIFTY 50"})
+        index = payload.get("index") or {}
+        value = _number(index.get("last"))
+        if payload.get("warning") or index.get("indexName") != "NIFTY 50" or value is None or value <= 0:
+            raise NSEUnavailable("NIFTY 50 snapshot is unavailable.")
+        timestamp = datetime.strptime(payload["nseTimestamp"], "%d-%b-%Y %H:%M:%S").replace(tzinfo=IST)
+        return {
+            "name": "NIFTY 50", "value": value, "dayChangePercent": _number(index.get("percChange")),
+            "timestamp": timestamp.isoformat(), "source": source,
+        }
+
+    try:
+        result = await cache_service.get_or_fetch("NSE:INDEX:NIFTY50", 300, fetch, source=source)
+        return {**result.value, "status": "cached" if result.stale else "last_published"}
+    except Exception:
+        return {}
+
+
 class NseMcpProvider:
     quote = staticmethod(_quote)
     search = staticmethod(_search)
     history = staticmethod(_history)
     historical_close = staticmethod(_historical_close)
     movers = staticmethod(_movers)
+    index_snapshot = staticmethod(_index_snapshot)

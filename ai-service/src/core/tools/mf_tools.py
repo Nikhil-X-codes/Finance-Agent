@@ -1,4 +1,4 @@
-"""Phase 1 mutual fund tools with FinAPI primary and stale fallback."""
+"""MFapi.in scheme metadata and latest NAV."""
 
 from __future__ import annotations
 
@@ -11,6 +11,41 @@ import httpx
 from ...config.constants import MF_METADATA_CACHE_TTL_SECONDS
 from ...config.settings import settings
 from ...services.cache_service import cache_service
+
+MFAPI_SOURCE = "MFapi.in"
+
+
+def _mfapi_url() -> str:
+    return f"{settings.mfapi_base_url.rstrip('/')}/mf"
+
+
+async def get_mfapi_catalog(client: httpx.AsyncClient) -> list[dict]:
+    async def fetch():
+        response = await client.get(_mfapi_url())
+        response.raise_for_status()
+        catalog = response.json()
+        if not isinstance(catalog, list) or not catalog:
+            raise ValueError("MFapi.in returned an invalid scheme catalog.")
+        return catalog
+
+    cached = await cache_service.get_or_fetch("MFAPI_CATALOG", 86400, fetch, source=MFAPI_SOURCE)
+    return cached.value
+
+
+async def fetch_mfapi_scheme(client: httpx.AsyncClient, scheme_code: str) -> dict:
+    if not scheme_code.isascii() or not scheme_code.isdecimal():
+        raise ValueError("MFapi.in scheme codes must be numeric.")
+    response = await client.get(f"{_mfapi_url()}/{scheme_code}/latest")
+    response.raise_for_status()
+    payload = response.json()
+    if (
+        not isinstance(payload, dict)
+        or not isinstance(payload.get("meta"), dict)
+        or not isinstance(payload.get("data"), list)
+        or str(payload["meta"].get("scheme_code")) != scheme_code
+    ):
+        raise ValueError("MFapi.in returned invalid scheme details.")
+    return payload
 
 
 @dataclass(slots=True)
@@ -61,37 +96,10 @@ class MFTools:
             data["stale_warning"] = stale_warning
         return data
 
-    def _metadata_lookup(self) -> dict[str, Any]:
-        return {}
-
-    def _reverse_lookup(self) -> dict[str, str]:
-        return {}
-
-    def _resolve_isin(self, isin_or_scheme_code: str) -> tuple[str, dict[str, Any]]:
-        key = isin_or_scheme_code.strip().upper()
-        lookup = self._metadata_lookup()
-        if key in lookup:
-            return key, lookup[key]
-        reverse = self._reverse_lookup()
-        isin = reverse.get(key)
-        if isin and isin in lookup:
-            return isin, lookup[isin]
-        return key, {}
-
-    async def _fetch_finapi(self, scheme_code: str, fields: str | None = None) -> dict[str, Any]:
-        client = await self._get_client()
-        url = f"{settings.finapi_base_url.rstrip('/')}/mf/{scheme_code}"
-        response = await client.get(url, params={"fields": fields} if fields else None)
-        response.raise_for_status()
-        payload = response.json()
-        if isinstance(payload, dict) and isinstance(payload.get("data"), dict):
-            return payload["data"]
-        return payload if isinstance(payload, dict) else {"data": payload}
-
     async def get_metadata(self, isin: str) -> MFResult:
-        resolved_isin, metadata = self._resolve_isin(isin)
-        scheme_code = str(metadata.get("schemeCode") or resolved_isin).strip()
-        cache_key = self._cache_key("FINAPI_META", resolved_isin)
+        resolved_isin = isin.strip().upper()
+        scheme_code = resolved_isin
+        cache_key = self._cache_key("MFAPI_META", resolved_isin)
         cached = await cache_service.get(cache_key)
         if cached is not None and self._is_fresh(cached):
             return MFResult(data=self._decorate(self._public_payload(cached), cached=True, fresh=True), stale=False)
@@ -99,35 +107,46 @@ class MFTools:
         stale_payload = self._public_payload(cached) if cached is not None else None
 
         try:
-            payload = await self._fetch_finapi(scheme_code, fields="expenseRatio,aum,schemeCategory,benchmark")
+            client = await self._get_client()
+            if not scheme_code.isdecimal():
+                catalog = await get_mfapi_catalog(client)
+                scheme_code = next((
+                    str(scheme["schemeCode"]) for scheme in catalog
+                    if isinstance(scheme, dict) and scheme.get("schemeCode")
+                    and resolved_isin in (scheme.get("isinGrowth"), scheme.get("isinDivReinvestment"))
+                ), "")
+                if not scheme_code:
+                    raise ValueError("MFapi.in has no scheme for this ISIN.")
+            payload = await fetch_mfapi_scheme(client, scheme_code)
+            scheme = payload["meta"]
             value = {
                 "isin": resolved_isin,
                 "scheme_code": scheme_code,
-                "expense_ratio": payload.get("expenseRatio") or metadata.get("expenseRatio"),
-                "aum": payload.get("aum") or metadata.get("aum"),
-                "category": payload.get("schemeCategory") or metadata.get("category"),
-                "benchmark": payload.get("benchmark") or metadata.get("benchmark"),
-                "source": "FINAPI",
+                "expense_ratio": None,
+                "aum": None,
+                "category": scheme.get("scheme_category"),
+                "benchmark": None,
+                "source": MFAPI_SOURCE,
             }
-            await cache_service.set(cache_key, value, MF_METADATA_CACHE_TTL_SECONDS, source="FINAPI")
-            return MFResult(data=self._decorate(value, cached=False, fresh=True, source="FINAPI"), stale=False)
-        except Exception as finapi_error:
+            await cache_service.set(cache_key, value, MF_METADATA_CACHE_TTL_SECONDS, source=MFAPI_SOURCE)
+            return MFResult(data=self._decorate(value, cached=False, fresh=True, source=MFAPI_SOURCE), stale=False)
+        except Exception as provider_error:
             if stale_payload is not None:
                 return MFResult(
                     data=self._decorate(
                         stale_payload,
                         cached=True,
                         fresh=False,
-                        source=stale_payload.get("source", "FINAPI"),
-                        stale_warning="FinAPI unavailable; serving stale metadata",
+                        source=stale_payload.get("source", MFAPI_SOURCE),
+                        stale_warning="MFapi.in unavailable; serving stale metadata",
                     ),
                     stale=True,
-                    error=str(finapi_error),
+                    error=str(provider_error),
                 )
             return MFResult(
                 data={"isin": resolved_isin, "scheme_code": scheme_code, "error": "MF_METADATA_UNAVAILABLE"},
                 stale=False,
-                error=str(finapi_error),
+                error=str(provider_error),
             )
 
 mf_tools = MFTools()

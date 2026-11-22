@@ -105,6 +105,10 @@ FastAPI -> workflow by authenticated route
 
 **Fixture v2** — The default suite now includes 50 synthetic cases. All 50 passed in deterministic mode, including 35 answered outcomes, 12 unavailable outcomes, and three clarification outcomes. The README chart and per-case results are generated from this run. Fixture v1 and its thresholds remain available for reproducing the earlier results.
 
+**Fixture v2 live run** — With Groq GPT-OSS 120B as judge, 20 of 35 answerable cases were scored. Nine cases hit judge rate limits, and six returned unavailable answers in live mode. Scored cases averaged 1.00 faithfulness, 0.947 context precision, 0.982 context recall, and 0.689 factual correctness. The evaluation exited with failure because 15 cases had errors. The README chart and the saved JSON identify the coverage of this run.
+
+**Fixture v2 retry** — A short Groq probe succeeded, but the targeted retry reproduced both failure modes. The stale-quote case hit the judge rate limit again, and the mixed case with a missing public quote returned an unavailable live answer again.
+
 ## Phase 6 — Integrate NSE data and retire superseded code
 
 - Prototype the Stocks page with **NSE CM Market Live** for timestamped quotes and **NSE Bhavcopy** for daily OHLCV. Add provider adapters inside FastAPI so stock pages and LangGraph enrichment can reuse the same normalized data. Keep fundamentals, news, and fund NAV on sources that supply those fields.

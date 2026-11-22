@@ -1,0 +1,535 @@
+{
+  "fixture_version": 2,
+  "selected_cases": 50,
+  "failed_cases": [
+    "market_stale_sbin",
+    "market_exact_infy_close",
+    "market_exact_sbin_close",
+    "market_two_symbols",
+    "market_partial_coverage",
+    "market_etf_quote",
+    "mixed_full_position",
+    "mixed_only_account",
+    "mixed_only_market",
+    "followup_market_inherit_symbol",
+    "followup_market_inherit_date",
+    "education_nav",
+    "education_cost_basis",
+    "education_dividend",
+    "education_diversification"
+  ],
+  "cases": [
+    {
+      "id": "portfolio_units",
+      "intent": "portfolio",
+      "status": "answered",
+      "errors": [],
+      "scores": {
+        "factual_correctness": 1.0,
+        "faithfulness": 1.0,
+        "context_precision": 0.9999999999,
+        "context_recall": 1.0
+      }
+    },
+    {
+      "id": "education",
+      "intent": "general",
+      "status": "answered",
+      "errors": [],
+      "scores": {
+        "factual_correctness": 0.0
+      }
+    },
+    {
+      "id": "held_symbol_public_quote",
+      "intent": "market",
+      "status": "answered",
+      "errors": [],
+      "scores": {
+        "factual_correctness": 0.0,
+        "faithfulness": 1.0,
+        "context_precision": 0.9999999999,
+        "context_recall": 1.0
+      }
+    },
+    {
+      "id": "mixed_conflicting_prices",
+      "intent": "mixed",
+      "status": "answered",
+      "errors": [],
+      "scores": {
+        "factual_correctness": 0.5,
+        "faithfulness": 1.0,
+        "context_precision": 0.99999999995,
+        "context_recall": 1.0
+      }
+    },
+    {
+      "id": "follow_up",
+      "intent": "portfolio",
+      "status": "answered",
+      "errors": [],
+      "scores": {
+        "factual_correctness": 1.0,
+        "faithfulness": 1.0,
+        "context_precision": 0.9999999999,
+        "context_recall": 1.0
+      }
+    },
+    {
+      "id": "intent_change",
+      "intent": "market",
+      "status": "answered",
+      "errors": [],
+      "scores": {
+        "factual_correctness": 0.0,
+        "faithfulness": 1.0,
+        "context_precision": 0.9999999999,
+        "context_recall": 1.0
+      }
+    },
+    {
+      "id": "historical_date",
+      "intent": "market",
+      "status": "answered",
+      "errors": [],
+      "scores": {
+        "factual_correctness": 1.0,
+        "faithfulness": 1.0,
+        "context_precision": 0.9999999999,
+        "context_recall": 1.0
+      }
+    },
+    {
+      "id": "missing_market_date",
+      "intent": "market",
+      "status": "unavailable",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "ambiguous",
+      "intent": "clarify",
+      "status": "clarify",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "empty_portfolio",
+      "intent": "portfolio",
+      "status": "unavailable",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "missing_portfolio_price",
+      "intent": "portfolio",
+      "status": "answered",
+      "errors": [],
+      "scores": {
+        "factual_correctness": 1.0,
+        "faithfulness": 1.0,
+        "context_precision": 0.9999999999,
+        "context_recall": 1.0
+      }
+    },
+    {
+      "id": "rules_without_source",
+      "intent": "current_rules",
+      "status": "unavailable",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "quantity_reopened",
+      "intent": "portfolio",
+      "status": "answered",
+      "errors": [],
+      "scores": {
+        "factual_correctness": 0.67,
+        "faithfulness": 1.0,
+        "context_precision": 0.49999999995,
+        "context_recall": 1.0
+      }
+    },
+    {
+      "id": "quantity_sold_out",
+      "intent": "portfolio",
+      "status": "unavailable",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "quantity_ambiguous_lots",
+      "intent": "portfolio",
+      "status": "unavailable",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "quantity_other_account",
+      "intent": "portfolio",
+      "status": "answered",
+      "errors": [],
+      "scores": {
+        "factual_correctness": 1.0,
+        "faithfulness": 1.0,
+        "context_precision": 0.9999999999,
+        "context_recall": 1.0
+      }
+    },
+    {
+      "id": "portfolio_value_complete",
+      "intent": "portfolio",
+      "status": "answered",
+      "errors": [],
+      "scores": {
+        "factual_correctness": 1.0,
+        "faithfulness": 1.0,
+        "context_precision": 0.9999999999,
+        "context_recall": 1.0
+      }
+    },
+    {
+      "id": "portfolio_value_closed",
+      "intent": "portfolio",
+      "status": "answered",
+      "errors": [],
+      "scores": {
+        "factual_correctness": 0.8,
+        "faithfulness": 1.0,
+        "context_precision": 0.9999999999,
+        "context_recall": 1.0
+      }
+    },
+    {
+      "id": "portfolio_value_funds",
+      "intent": "portfolio",
+      "status": "answered",
+      "errors": [],
+      "scores": {
+        "factual_correctness": 1.0,
+        "faithfulness": 1.0,
+        "context_precision": 0.9999999999,
+        "context_recall": 1.0
+      }
+    },
+    {
+      "id": "portfolio_partial_sale",
+      "intent": "portfolio",
+      "status": "answered",
+      "errors": [],
+      "scores": {
+        "factual_correctness": 1.0,
+        "faithfulness": 1.0,
+        "context_precision": 0.9999999999,
+        "context_recall": 1.0
+      }
+    },
+    {
+      "id": "portfolio_realized_pnl",
+      "intent": "portfolio",
+      "status": "answered",
+      "errors": [],
+      "scores": {
+        "factual_correctness": 1.0,
+        "faithfulness": 1.0,
+        "context_precision": 0.49999999995,
+        "context_recall": 1.0
+      }
+    },
+    {
+      "id": "portfolio_unknown_realized_pnl",
+      "intent": "portfolio",
+      "status": "answered",
+      "errors": [],
+      "scores": {
+        "factual_correctness": 1.0,
+        "faithfulness": 1.0,
+        "context_precision": 0.9999999999,
+        "context_recall": 1.0
+      }
+    },
+    {
+      "id": "portfolio_statement_cost",
+      "intent": "portfolio",
+      "status": "answered",
+      "errors": [],
+      "scores": {
+        "factual_correctness": 1.0,
+        "faithfulness": 1.0,
+        "context_precision": 0.9999999999,
+        "context_recall": 1.0
+      }
+    },
+    {
+      "id": "portfolio_isin_lookup",
+      "intent": "portfolio",
+      "status": "answered",
+      "errors": [],
+      "scores": {
+        "factual_correctness": 0.8,
+        "faithfulness": 1.0,
+        "context_precision": 0.9999999999,
+        "context_recall": 0.6666666666666666
+      }
+    },
+    {
+      "id": "portfolio_symbol_missing",
+      "intent": "portfolio",
+      "status": "unavailable",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "empty_account_exposure",
+      "intent": "portfolio",
+      "status": "unavailable",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "market_unheld_reliance",
+      "intent": "market",
+      "status": "answered",
+      "errors": [],
+      "scores": {
+        "factual_correctness": 0.0,
+        "faithfulness": 1.0,
+        "context_precision": 0.9999999999,
+        "context_recall": 1.0
+      }
+    },
+    {
+      "id": "market_infy_missing_statement_price",
+      "intent": "market",
+      "status": "answered",
+      "errors": [],
+      "scores": {
+        "factual_correctness": 0.0,
+        "faithfulness": 1.0,
+        "context_precision": 0.9999999999,
+        "context_recall": 1.0
+      }
+    },
+    {
+      "id": "market_stale_sbin",
+      "intent": "market",
+      "status": "answered",
+      "errors": [
+        "Ragas failed: RateLimitError"
+      ],
+      "scores": {}
+    },
+    {
+      "id": "market_exact_infy_close",
+      "intent": "market",
+      "status": "answered",
+      "errors": [
+        "Ragas failed: RateLimitError"
+      ],
+      "scores": {}
+    },
+    {
+      "id": "market_exact_sbin_close",
+      "intent": "market",
+      "status": "answered",
+      "errors": [
+        "Ragas failed: RateLimitError"
+      ],
+      "scores": {}
+    },
+    {
+      "id": "market_two_symbols",
+      "intent": "market",
+      "status": "answered",
+      "errors": [
+        "Ragas failed: RateLimitError"
+      ],
+      "scores": {}
+    },
+    {
+      "id": "market_partial_coverage",
+      "intent": "market",
+      "status": "answered",
+      "errors": [
+        "Ragas failed: RateLimitError"
+      ],
+      "scores": {}
+    },
+    {
+      "id": "market_etf_quote",
+      "intent": "market",
+      "status": "answered",
+      "errors": [
+        "Ragas failed: RateLimitError"
+      ],
+      "scores": {}
+    },
+    {
+      "id": "market_provider_prior_session",
+      "intent": "market",
+      "status": "unavailable",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "market_invalid_zero_quote",
+      "intent": "market",
+      "status": "unavailable",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "market_missing_timestamp",
+      "intent": "market",
+      "status": "unavailable",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "mixed_full_position",
+      "intent": "mixed",
+      "status": "unavailable",
+      "errors": [
+        "answer status mismatch",
+        "missing citation",
+        "missing response value: 81.75"
+      ],
+      "scores": {}
+    },
+    {
+      "id": "mixed_only_account",
+      "intent": "mixed",
+      "status": "unavailable",
+      "errors": [
+        "answer status mismatch",
+        "missing citation"
+      ],
+      "scores": {}
+    },
+    {
+      "id": "mixed_only_market",
+      "intent": "mixed",
+      "status": "unavailable",
+      "errors": [
+        "answer status mismatch",
+        "missing citation",
+        "missing response value: 140.5"
+      ],
+      "scores": {}
+    },
+    {
+      "id": "followup_market_inherit_symbol",
+      "intent": "market",
+      "status": "answered",
+      "errors": [
+        "Ragas failed: RateLimitError"
+      ],
+      "scores": {}
+    },
+    {
+      "id": "followup_market_inherit_date",
+      "intent": "market",
+      "status": "answered",
+      "errors": [
+        "Ragas failed: RateLimitError"
+      ],
+      "scores": {}
+    },
+    {
+      "id": "education_nav",
+      "intent": "general",
+      "status": "answered",
+      "errors": [
+        "Ragas failed: RateLimitError"
+      ],
+      "scores": {}
+    },
+    {
+      "id": "education_cost_basis",
+      "intent": "general",
+      "status": "unavailable",
+      "errors": [
+        "answer status mismatch"
+      ],
+      "scores": {}
+    },
+    {
+      "id": "education_dividend",
+      "intent": "general",
+      "status": "unavailable",
+      "errors": [
+        "answer status mismatch"
+      ],
+      "scores": {}
+    },
+    {
+      "id": "education_diversification",
+      "intent": "general",
+      "status": "unavailable",
+      "errors": [
+        "answer status mismatch"
+      ],
+      "scores": {}
+    },
+    {
+      "id": "unsupported_moving_average",
+      "intent": "market",
+      "status": "unavailable",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "unsupported_corporate_actions",
+      "intent": "market",
+      "status": "unavailable",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "historical_relative_date",
+      "intent": "clarify",
+      "status": "clarify",
+      "errors": [],
+      "scores": {}
+    },
+    {
+      "id": "historical_two_dates",
+      "intent": "clarify",
+      "status": "clarify",
+      "errors": [],
+      "scores": {}
+    }
+  ],
+  "averages": {
+    "portfolio": {
+      "factual_correctness": 0.9438461538461539,
+      "faithfulness": 1.0,
+      "context_precision": 0.9230769229846154,
+      "context_recall": 0.9743589743589743
+    },
+    "all": {
+      "factual_correctness": 0.6885,
+      "faithfulness": 1.0,
+      "context_precision": 0.9473684209605263,
+      "context_recall": 0.9824561403508771
+    },
+    "general": {
+      "factual_correctness": 0.0
+    },
+    "market": {
+      "factual_correctness": 0.2,
+      "faithfulness": 1.0,
+      "context_precision": 0.9999999999,
+      "context_recall": 1.0
+    },
+    "mixed": {
+      "factual_correctness": 0.5,
+      "faithfulness": 1.0,
+      "context_precision": 0.99999999995,
+      "context_recall": 1.0
+    }
+  },
+  "gate_failures": []
+}

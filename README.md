@@ -174,14 +174,16 @@ The [v2 fixture](ai-service/evals/v2.json) covers 50 synthetic scenarios. The ch
 
 **Deterministic result:** 50 of 50 cases passed. The graph answered 35 cases, reported unavailable evidence or unsupported requests in 12, and asked for clarification in three.
 
+**Live Ragas result:** The run visited all 50 cases and scored 20 of the 35 answerable cases. Groq rate limits blocked nine judge evaluations, and six cases did not produce a verified live answer. Completed scores averaged 1.00 faithfulness, 0.95 context precision, 0.98 context recall, and 0.69 factual correctness. The overall run failed because 15 cases had errors.
+
 ![Finance Agent Q&A evaluation results, including deterministic pass counts by question type](ai-service/evals/results/v2-results.svg)
 
-[Deterministic per-case results](ai-service/evals/results/v2-deterministic.json)
+[Deterministic per-case results](ai-service/evals/results/v2-deterministic.json) · [Live Ragas per-case results](ai-service/evals/results/v2-ragas.json)
 
 | Phase | Status |
 | --- | --- |
 | 1–4 · API boundary, Postgres, accounting, and LangGraph | Implemented and verified. |
-| 5 · Q&A evaluations | All 50 v2 deterministic cases pass. See the chart and per-case output above. |
+| 5 · Q&A evaluations | All 50 v2 deterministic cases pass. The live run has partial score coverage and has not passed end to end. |
 | 6 · Market data cutover | Both NSE adapters returned INFY data for 20 November 2026. MFapi.in returned dated NAVs for all 12 fund categories. The production frontend build and API smoke test, all 27 backend tests, and all eight frontend unit tests passed. |
 
 ## Migrate an existing SQLite database

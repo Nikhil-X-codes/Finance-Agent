@@ -1,7 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="820" height="374" viewBox="0 0 820 374" role="img" aria-labelledby="title description">
+<svg xmlns="http://www.w3.org/2000/svg" width="820" height="640" viewBox="0 0 820 640" role="img" aria-labelledby="title description">
 <title id="title">Finance Agent Q&amp;A evaluation results</title>
 <desc id="description">Deterministic results by intent and model-judged Ragas scores when available.</desc>
-<rect width="820" height="374" rx="16" fill="#f8fafc"/>
+<rect width="820" height="640" rx="16" fill="#f8fafc"/>
 <g font-family="system-ui, sans-serif" fill="#0f172a">
 <text x="30" y="47" font-size="26" font-weight="700">Q&amp;A evaluation · Fixture v2</text>
 <text x="30" y="77" font-size="16" font-weight="700">Deterministic graph checks · 50/50 passed</text>
@@ -30,5 +30,29 @@
 <rect x="205" y="296" width="22.105263157894736" height="15" rx="4" fill="#e2e8f0"/>
 <rect x="205" y="296" width="22.11" height="15" rx="4" fill="#0f766e"/>
 <text x="655" y="309" font-size="14">1/1</text>
+<text x="30" y="367" font-size="16" font-weight="700">Ragas · Live answers and judge</text>
+<text x="30" y="392" font-size="14">20/35 answerable cases scored · 15 cases with errors</text>
+<text x="650" y="417" font-size="12">Score / scored cases</text>
+<text x="30" y="446" font-size="14">Faithfulness</text>
+<rect x="205" y="433" width="420" height="15" rx="4" fill="#e2e8f0"/>
+<rect x="205" y="433" width="420.00" height="15" rx="4" fill="#2457a6"/>
+<path d="M541.00 430v21" stroke="#0f172a" stroke-width="2"/>
+<text x="655" y="446" font-size="14">1.00 / 19</text>
+<text x="30" y="480" font-size="14">Context precision</text>
+<rect x="205" y="467" width="420" height="15" rx="4" fill="#e2e8f0"/>
+<rect x="205" y="467" width="397.89" height="15" rx="4" fill="#2457a6"/>
+<path d="M499.00 464v21" stroke="#0f172a" stroke-width="2"/>
+<text x="655" y="480" font-size="14">0.95 / 19</text>
+<text x="30" y="514" font-size="14">Context recall</text>
+<rect x="205" y="501" width="420" height="15" rx="4" fill="#e2e8f0"/>
+<rect x="205" y="501" width="412.63" height="15" rx="4" fill="#2457a6"/>
+<path d="M541.00 498v21" stroke="#0f172a" stroke-width="2"/>
+<text x="655" y="514" font-size="14">0.98 / 19</text>
+<text x="30" y="548" font-size="14">Factual correctness</text>
+<rect x="205" y="535" width="420" height="15" rx="4" fill="#e2e8f0"/>
+<rect x="205" y="535" width="289.17" height="15" rx="4" fill="#2457a6"/>
+<text x="655" y="548" font-size="14">0.69 / 20</text>
+<text x="30" y="595" font-size="13">Vertical marks show the configured minimums. Averages use completed scores only.</text>
+<text x="30" y="617" font-size="13" font-weight="700">The live run did not pass every evaluation check.</text>
 </g>
 </svg>

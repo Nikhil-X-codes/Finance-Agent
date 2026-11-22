@@ -1,165 +1,45 @@
-"""Portfolio Context Builder node — replaces regulatory RAG retriever."""
+"""Format shared portfolio facts for the report's advisory analysis."""
 
-from __future__ import annotations
+from src.services.portfolio_facts import invested_cost, is_active, summarize_portfolio
 
-from typing import Any
-
-from ..state import PortfolioState
+from ..state import ReportState
 
 
-async def build_portfolio_context(state: PortfolioState) -> dict[str, Any]:
-    """Build rich text context from portfolio holdings for LLM reasoning."""
-    holdings = state.get("normalized_holdings") or state.get("raw_holdings") or []
-    enriched = state.get("enriched_holdings") or []
-    errors: list[dict[str, str]] = list(state.get("errors") or [])
+def _inr(value: float | None) -> str:
+    return "unavailable" if value is None else f"INR {value:,.2f}"
 
-    if not holdings and not enriched:
-        return {
-            "portfolio_context_text": "No portfolio holdings available.",
-            "qa_context_text": "No portfolio holdings available.",
-            "portfolio_summary": {},
-            "target_holdings": [],
-            "errors": errors,
-            "current_node": "portfolio_context"
-        }
 
-    # Use enriched if available, else raw holdings
-    source = enriched if enriched else [
-        {
-            "ticker": h.get("ticker", "") if isinstance(h, dict) else h.ticker,
-            "name": h.get("name", h.get("ticker", "")) if isinstance(h, dict) else h.name,
-            "quantity": float(h.get("quantity") or 0) if isinstance(h, dict) else h.quantity,
-            "avg_buy_price": float(h.get("avg_buy_price") or h.get("avgBuyPrice") or 0) if isinstance(h, dict) else h.avg_buy_price,
-            "asset_type": h.get("asset_type", "STOCK") if isinstance(h, dict) else h.asset_type,
-            "sector": h.get("sector") or "Unknown" if isinstance(h, dict) else (h.sector or "Unknown"),
-            "current_price": float(h.get("current_price") or h.get("avg_buy_price") or h.get("avgBuyPrice") or 0) if isinstance(h, dict) else (h.current_price or h.avg_buy_price),
-            "status": h.get("status") or "UNREALIZED" if isinstance(h, dict) else (h.status or "UNREALIZED"),
-            "sell_price": h.get("sell_price") if isinstance(h, dict) else h.sell_price,
-            "realized_pnl": h.get("realized_pnl") if isinstance(h, dict) else h.realized_pnl,
-        }
-        for h in holdings
-    ]
-
-    # Clean ticker names and format items consistently
-    for item in source:
-        item["ticker"] = str(item.get("ticker") or "").strip().upper()
-        item["name"] = str(item.get("name") or item.get("ticker") or "").strip()
-        item["status"] = str(item.get("status") or "UNREALIZED").upper()
-
-    # Separate current active holdings vs. realized (sold) trades
-    current_holdings = [item for item in source if item.get("status") != "REALIZED" and item.get("quantity", 0) > 0]
-    realized_trades = [item for item in source if item.get("status") == "REALIZED" or item.get("quantity", 0) == 0]
-
-    # Calculate VALUE-BASED weights for active holdings
-    for item in current_holdings:
-        item["value"] = item["quantity"] * item["avg_buy_price"]
-
-    total_value = sum(item["value"] for item in current_holdings)
-
-    for item in current_holdings:
-        item["portfolio_weight"] = (item["value"] / total_value) if total_value > 0 else 0.0
-
-    for item in realized_trades:
-        item["value"] = 0.0
-        item["portfolio_weight"] = 0.0
-
-    # Sector breakdown (active holdings only)
-    sector_weights: dict[str, float] = {}
-    for item in current_holdings:
-        sector = item.get("sector") or "Unknown"
-        sector_weights[sector] = sector_weights.get(sector, 0.0) + item["value"]
-
-    # Stock-level details for active holdings
-    stock_lines = []
-    for item in sorted(current_holdings, key=lambda x: x.get("portfolio_weight", 0.0), reverse=True):
-        ticker = item.get("ticker", "Unknown")
-        name = item.get("name", ticker)
-        qty = item.get("quantity", 0)
-        avg = item.get("avg_buy_price", 0)
-        current = item.get("current_price", avg)
-        weight = item.get("portfolio_weight", 0.0) * 100
-        pnl = (current - avg) * qty
-        pnl_pct = ((current - avg) / avg * 100) if avg > 0 else 0
-        
-        stock_lines.append(
-            f"- {ticker} ({name}): {qty:.0f} shares, avg ₹{avg:.2f}, current ₹{current:.2f}, "
-            f"weight {weight:.1f}%, P&L ₹{pnl:,.2f} ({pnl_pct:+.1f}%)"
-        )
-
-    # Realized details
+def build_portfolio_context(state: ReportState) -> dict:
+    holdings = [holding.model_dump(mode="json") for holding in state.get("normalized_holdings", [])]
+    summary = summarize_portfolio(holdings)
+    total_cost = summary["total_invested"]
+    active_lines = []
     realized_lines = []
-    for item in realized_trades:
-        ticker = item.get("ticker", "Unknown")
-        name = item.get("name", ticker)
-        qty = item.get("quantity", 0)
-        avg = item.get("avg_buy_price", 0)
-        sell = item.get("sell_price", 0) or 0.0
-        pnl = item.get("realized_pnl")
-        if pnl is None:
-            pnl = (sell - avg) * qty
-        pnl_pct = ((sell - avg) / avg * 100) if avg > 0 else 0
-        
-        realized_lines.append(
-            f"- {ticker} ({name}): Sold {qty:.0f} shares, avg buy ₹{avg:.2f}, sold ₹{sell:.2f}, Realized P&L ₹{pnl:,.2f} ({pnl_pct:+.1f}%)"
-        )
+    for holding in holdings:
+        if is_active(holding):
+            weight = invested_cost(holding) / total_cost if total_cost else 0
+            source = holding.get("price_source") or "source unknown"
+            as_of = holding.get("price_as_of") or "date unknown"
+            active_lines.append(
+                f"- {holding['ticker']}: {holding['quantity']} units, average cost {_inr(holding['avg_buy_price'])}, "
+                f"quote {_inr(holding.get('current_price'))} ({source}, {as_of}), invested cost weight {weight:.1%}."
+            )
+        elif holding.get("status") == "REALIZED":
+            sold_on = holding.get("sell_date") or "an unknown date"
+            realized_lines.append(
+                f"- {holding['ticker']}: sold {holding['quantity']} units on {sold_on}, "
+                f"sale price {_inr(holding.get('sell_price'))}, realized P&L {_inr(holding.get('realized_pnl'))}."
+            )
 
-    # Concentration Analysis
-    largest_holding_ticker = "N/A"
-    largest_holding_weight = 0.0
-    if current_holdings:
-        largest_holding = max(current_holdings, key=lambda x: x.get("portfolio_weight", 0.0))
-        largest_holding_ticker = largest_holding.get("ticker", "N/A")
-        largest_holding_weight = largest_holding.get("portfolio_weight", 0.0) * 100
-
-    top_3_weight = sum(sorted((item.get("portfolio_weight", 0.0) for item in current_holdings), reverse=True)[:3]) * 100
-    concentration_level = 'HIGH' if largest_holding_weight > 50 else 'MODERATE' if largest_holding_weight > 25 else 'LOW'
-
-    # Build context text
-    context_text = f"""PORTFOLIO OVERVIEW (Active):
-Total Invested (Active): ₹{total_value:,.2f}
-Current Value (Active): ₹{total_value:,.2f}
-Unrealized P&L: ₹0.00
-Realized P&L (Locked-in): ₹{sum(t.get('realized_pnl') or 0.0 for t in realized_trades):,.2f}
-
-SECTOR ALLOCATION (Active Holdings):
-{chr(10).join(f"- {sector}: ₹{val:,.2f} ({(val / total_value * 100) if total_value > 0 else 0:.1f}%)" for sector, val in sorted(sector_weights.items(), key=lambda x: x[1], reverse=True))}
-
-ACTIVE HOLDINGS (sorted by weight):
-{chr(10).join(stock_lines) if stock_lines else "No active holdings."}
-
-TRADE HISTORY (Realized/Sold positions):
-{chr(10).join(realized_lines) if realized_lines else "No trade history."}
-
-CONCENTRATION ANALYSIS (Active Holdings):
-- Largest holding: {largest_holding_ticker} at {largest_holding_weight:.1f}%
-- Top 3 holdings represent {top_3_weight:.1f}% of active portfolio
-- Concentration Level: {concentration_level}
-"""
-
-    # Scan user question to identify target holdings for Q&A route
-    question = state.get("question", "").lower()
-    mentioned_tickers = []
-    if question:
-        for item in source:
-            ticker = item.get("ticker", "").lower()
-            name = item.get("name", "").lower()
-            if ticker in question or name in question:
-                mentioned_tickers.append(item.get("ticker"))
-
-    # Fallback to all active tickers if none mentioned specifically
-    target_holdings = mentioned_tickers if mentioned_tickers else [h.get("ticker") for h in current_holdings]
-
+    text = "\n".join([
+        f"Invested cost: {_inr(total_cost)}",
+        f"Quoted market value: {_inr(summary['total_current'])}",
+        f"Unrealized P&L: {_inr(summary['unrealized_pnl'])}",
+        f"Realized P&L: {_inr(summary['realized_pnl'])}",
+        "Active holdings:", *(active_lines or ["No open positions."]),
+        "Realized transactions:", *(realized_lines or ["No realized transactions."]),
+    ])
     return {
-        "portfolio_context_text": context_text,
-        "qa_context_text": context_text,
-        "portfolio_summary": {
-            "total_invested": total_value,
-            "total_current": total_value,
-            "sector_weights": sector_weights,
-            "holding_count": len(current_holdings),
-            "concentration_level": concentration_level
-        },
-        "target_holdings": target_holdings,
-        "errors": errors,
-        "current_node": "portfolio_context"
+        "portfolio_context_text": text if holdings else "No portfolio data available.",
+        "portfolio_summary": summary,
     }

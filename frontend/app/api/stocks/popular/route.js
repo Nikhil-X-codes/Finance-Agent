@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(request) {
   try {
     const session = await getSession();
@@ -22,9 +24,9 @@ export async function GET(request) {
     });
 
     if (!aiResponse.ok) {
-      const errText = await aiResponse.text();
+      const payload = await aiResponse.json().catch(() => ({}));
       return NextResponse.json(
-        { error: errText || "Failed to fetch popular stocks", code: "FETCH_FAILED" },
+        { error: typeof payload.detail === "string" ? payload.detail : "Market movers are temporarily unavailable.", code: "FETCH_FAILED" },
         { status: aiResponse.status }
       );
     }
@@ -32,10 +34,10 @@ export async function GET(request) {
     const data = await aiResponse.json();
     return NextResponse.json(data);
   } catch (error) {
-    console.error("Popular stocks API error:", error);
+    console.error("Market movers API error:", error.code || error.name);
     return NextResponse.json(
-      { error: "Internal Server Error", code: "INTERNAL_ERROR" },
-      { status: 500 }
+      { error: "The market data service is unavailable. Try again when the AI service is running.", code: "AI_UNAVAILABLE" },
+      { status: 503 }
     );
   }
 }

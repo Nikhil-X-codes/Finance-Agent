@@ -7,6 +7,7 @@ env/
 
 # Next.js build output and cache
 .next/
+.next-dev/
 out/
 build/
 
@@ -28,6 +29,7 @@ htmlcov/
 .env.test.local
 .env.production.local
 *.env
+ai-service/.certs/
 
 # Local Databases and Vector Indexes
 *.db

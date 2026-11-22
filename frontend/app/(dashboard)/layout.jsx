@@ -1,98 +1,42 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
+import DashboardNav from "@/components/dashboard-nav";
 import { getSession } from "@/lib/auth";
+
+export const dynamic = "force-dynamic";
 
 export default async function DashboardLayout({ children }) {
   const session = await getSession();
-
-  if (!session.userId) {
-    redirect("/login");
-  }
+  if (!session.userId) redirect("/login");
 
   return (
-    <div className="min-h-screen bg-slate-950">
-      <header className="sticky top-0 z-40 border-b border-slate-800 bg-slate-950/80 backdrop-blur-md">
-        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-6">
-          <div className="flex items-center gap-8">
-            <a href="/" className="text-lg font-semibold tracking-tight text-slate-50">
-              Portfolio Advisor
-            </a>
-            <nav className="hidden items-center gap-1 sm:flex">
-              <a
-                href="/"
-                className="rounded-md px-3 py-1.5 text-sm font-medium text-slate-400 transition-colors hover:bg-slate-800 hover:text-slate-50"
-              >
-                Dashboard
-              </a>
-
-              <a
-                href="/trade-log"
-                className="rounded-md px-3 py-1.5 text-sm font-medium text-slate-400 transition-colors hover:bg-slate-800 hover:text-slate-50"
-              >
-                Trade Log
-              </a>
-              <a
-                href="/funds"
-                className="rounded-md px-3 py-1.5 text-sm font-medium text-slate-400 transition-colors hover:bg-slate-800 hover:text-slate-50"
-              >
-                Funds
-              </a>
-              <a
-                href="/stocks"
-                className="rounded-md px-3 py-1.5 text-sm font-medium text-slate-400 transition-colors hover:bg-slate-800 hover:text-slate-50"
-              >
-                Stocks
-              </a>
-              <a
-                href="/report"
-                className="rounded-md px-3 py-1.5 text-sm font-medium text-slate-400 transition-colors hover:bg-slate-800 hover:text-slate-50"
-              >
-                Advisory Report
-              </a>
-              <a
-                href="/report/history"
-                className="rounded-md px-3 py-1.5 text-sm font-medium text-slate-400 transition-colors hover:bg-slate-800 hover:text-slate-50"
-              >
-                History
-              </a>
-              <a
-                href="/qa"
-                className="rounded-md px-3 py-1.5 text-sm font-medium text-slate-400 transition-colors hover:bg-slate-800 hover:text-slate-50"
-              >
-                Q&A Assistant
-              </a>
-
-            </nav>
-          </div>
-
-          <div className="flex items-center gap-4">
-            <span className="hidden text-sm text-slate-500 sm:inline">
-              {session.email}
-            </span>
-            <form action="/api/auth/logout" method="POST">
-              <button
-                type="submit"
-                className="rounded-md px-3 py-1.5 text-sm font-medium text-slate-400 transition-colors hover:bg-slate-800 hover:text-slate-50"
-              >
-                Logout
-              </button>
-            </form>
-          </div>
+    <div className="dashboard-shell">
+      <a href="#content" className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:bg-slate-950 focus:p-3">
+        Skip to content
+      </a>
+      <header className="dashboard-header">
+        <Link href="/" className="dashboard-brand">
+          <span className="dashboard-mark" aria-hidden="true" />
+          Finance Agent
+        </Link>
+        <div className="dashboard-account">
+          <span className="hidden min-w-0 truncate text-sm text-slate-400 sm:block">{session.email}</span>
+          <form action="/api/auth/logout" method="POST" className="shrink-0">
+            <button type="submit" className="rounded-md border border-slate-700 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-800">
+              Sign out
+            </button>
+          </form>
         </div>
       </header>
-
-      {/* Main content */}
-      <main className="mx-auto max-w-6xl px-6 py-8">
-        {children}
-      </main>
-
-      {/* Disclaimer footer */}
-      <footer className="border-t border-slate-800 bg-slate-950 px-6 py-4">
-        <p className="mx-auto max-w-6xl text-xs text-slate-600">
-          This is not SEBI-registered investment advice. Consult a SEBI-registered advisor before investing.
-          AI-generated recommendations are based on public data and regulatory guidelines.
-          Mutual fund investments are subject to market risks.
-        </p>
-      </footer>
+      <DashboardNav />
+      <div className="dashboard-body">
+        <main id="content" tabIndex={-1} className="mx-auto w-full max-w-7xl flex-1 px-5 py-8 sm:px-8 sm:py-10 xl:px-12">
+          {children}
+        </main>
+        <footer className="border-t border-slate-800 px-5 py-4 text-xs leading-relaxed text-slate-400 sm:px-8 xl:px-12">
+          <p className="mx-auto max-w-7xl">For information only. Consult a SEBI-registered adviser before investing.</p>
+        </footer>
+      </div>
     </div>
   );
 }

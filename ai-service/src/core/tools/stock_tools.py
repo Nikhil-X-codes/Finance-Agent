@@ -1,4 +1,4 @@
-"""Stock tools — Yahoo primary (price), Screener primary (fundamentals), search by name."""
+"""Company fundamentals from Screener."""
 
 from __future__ import annotations
 
@@ -7,16 +7,14 @@ import time
 from dataclasses import dataclass
 from html.parser import HTMLParser
 from typing import Any
-from urllib.parse import quote_plus
+from urllib.parse import quote
 
 import httpx
 
-from ...config.constants import STOCK_FUNDAMENTALS_CACHE_TTL_SECONDS, STOCK_QUOTE_CACHE_TTL_SECONDS
+from ...config.settings import settings
 from ...services.cache_service import cache_service
 
-YAHOO_CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}.NS?range=5d&interval=1d"
-YAHOO_SEARCH_URL = "https://query1.finance.yahoo.com/v1/finance/search?q={query}&quotesCount=5&newsCount=0"
-SCREENER_URL = "https://www.screener.in/company/{slug}/consolidated/"
+SCREENER_URL = "https://www.screener.in/company/{symbol}/consolidated/"
 
 
 class _TagStripper(HTMLParser):
@@ -89,147 +87,11 @@ class StockTools:
         return data
 
     # ───────────────────────────────────────────────
-    # SEARCH BY NAME (NEW)
-    # ───────────────────────────────────────────────
-    async def search_by_name(self, query: str) -> list[dict[str, Any]]:
-        """Search stocks by company name. Returns list of matches."""
-        client = await self._get_client()
-        url = YAHOO_SEARCH_URL.format(query=quote_plus(query))
-        response = await client.get(url)
-        response.raise_for_status()
-        data = response.json()
-        
-        quotes = data.get("quotes", [])
-        results = []
-        for q in quotes:
-            # Only Indian stocks (.NS suffix)
-            symbol = q.get("symbol", "")
-            if not symbol.endswith(".NS"):
-                continue
-            results.append({
-                "symbol": symbol.replace(".NS", ""),
-                "name": q.get("longname") or q.get("shortname") or "Unknown",
-                "exchange": q.get("exchange", "NSE"),
-                "type": q.get("quoteType", "EQUITY"),
-            })
-        return results
-
-    # ───────────────────────────────────────────────
-    # PRICE QUOTE — YAHOO PRIMARY (NSE is dead)
-    # ───────────────────────────────────────────────
-    async def _fetch_yahoo_quote(self, symbol: str) -> dict[str, Any]:
-        client = await self._get_client()
-        url = YAHOO_CHART_URL.format(symbol=symbol)
-        response = await client.get(url)
-        response.raise_for_status()
-        payload = response.json()
-        
-        result = (payload.get("chart") or {}).get("result") or []
-        if not result:
-            raise RuntimeError("Yahoo response missing chart result")
-        
-        chart = result[0]
-        meta = chart.get("meta") or {}
-        current_price = meta.get("regularMarketPrice")
-        previous_close = meta.get("chartPreviousClose")
-        
-        # Fallback to last close in data array
-        if current_price is None:
-            quote = ((chart.get("indicators") or {}).get("quote") or [{}])[0]
-            closes = quote.get("close") or []
-            current_price = next((v for v in reversed(closes) if v is not None), None)
-        
-        day_change = None
-        day_change_percent = None
-        if current_price and previous_close:
-            day_change = current_price - previous_close
-            day_change_percent = (day_change / previous_close) * 100
-        
-        return {
-            "ticker": symbol,
-            "company_name": meta.get("longName") or meta.get("shortName") or symbol,
-            "current_price": current_price,
-            "previous_close": previous_close,
-            "day_change": round(day_change, 2) if day_change else None,
-            "day_change_percent": round(day_change_percent, 2) if day_change_percent else None,
-            "currency": meta.get("currency", "INR"),
-            "fifty_two_week_range": meta.get("fiftyTwoWeekRange"),
-            "source": "YAHOO",
-        }
-
-    async def get_quote(self, symbol: str) -> StockResult:
-        """Get stock price — Yahoo primary, stale cache fallback."""
-        ticker = symbol.upper().strip()
-        cache_key = self._cache_key("QUOTE", ticker)
-        cached = cache_service.get(cache_key)
-        
-        # Return fresh cache
-        if cached and self._is_fresh(cached):
-            return StockResult(
-                data=self._decorate(self._public_payload(cached), cached=True, fresh=True),
-                stale=False
-            )
-        
-        stale = self._public_payload(cached) if cached else None
-        
-        try:
-            value = await self._fetch_yahoo_quote(ticker)
-            cache_service.set(cache_key, value, STOCK_QUOTE_CACHE_TTL_SECONDS, source="YAHOO")
-            return StockResult(
-                data=self._decorate(value, cached=False, fresh=True, source="YAHOO"),
-                stale=False
-            )
-        except Exception as e:
-            # Serve stale cache if Yahoo fails
-            if stale:
-                return StockResult(
-                    data=self._decorate(
-                        stale,
-                        cached=True,
-                        fresh=False,
-                        source=stale.get("source", "YAHOO"),
-                        stale_warning="Yahoo unavailable; serving stale quote",
-                    ),
-                    stale=True,
-                    error=str(e),
-                )
-            return StockResult(
-                data={"ticker": ticker, "error": "QUOTE_UNAVAILABLE"},
-                error=str(e),
-            )
-
-    # ───────────────────────────────────────────────
     # FUNDAMENTALS — SCREENER PRIMARY (works!)
     # ───────────────────────────────────────────────
-    def _company_slug(self, symbol: str) -> str:
-        # Common symbol → slug mappings
-        hardcoded = {
-            "RELIANCE": "reliance-industries",
-            "HDFCBANK": "hdfc-bank",
-            "INFY": "infosys",
-            "TCS": "tata-consultancy-services",
-            "SBIN": "state-bank-of-india",
-            "ITC": "itc",
-            "ICICIBANK": "icici-bank",
-            "KOTAKBANK": "kotak-mahindra-bank",
-            "LT": "larsen-toubro",
-            "AXISBANK": "axis-bank",
-            "BAJFINANCE": "bajaj-finance",
-            "BHARTIARTL": "bharti-airtel",
-            "ASIANPAINT": "asian-paints",
-            "MARUTI": "maruti-suzuki",
-            "HCLTECH": "hcl-technologies",
-            "WIPRO": "wipro",
-        }
-        if symbol.upper() in hardcoded:
-            return hardcoded[symbol.upper()]
-        # Fallback: generate slug from symbol
-        return symbol.lower()
-
     async def _fetch_screener_fundamentals(self, symbol: str) -> dict[str, Any]:
         client = await self._get_client()
-        slug = self._company_slug(symbol)
-        url = SCREENER_URL.format(slug=slug)
+        url = SCREENER_URL.format(symbol=quote(symbol, safe=""))
         response = await client.get(url)
         response.raise_for_status()
         text = _strip_tags(response.text)
@@ -251,7 +113,7 @@ class StockTools:
         """Get stock fundamentals — Screener primary, stale cache fallback."""
         ticker = symbol.upper().strip()
         cache_key = self._cache_key("FUND", ticker)
-        cached = cache_service.get(cache_key)
+        cached = await cache_service.get(cache_key)
         
         if cached and self._is_fresh(cached):
             return StockResult(
@@ -263,7 +125,7 @@ class StockTools:
         
         try:
             value = await self._fetch_screener_fundamentals(ticker)
-            cache_service.set(cache_key, value, STOCK_FUNDAMENTALS_CACHE_TTL_SECONDS, source="SCREENER")
+            await cache_service.set(cache_key, value, settings.stock_fundamentals_cache_ttl_seconds, source="SCREENER")
             return StockResult(
                 data=self._decorate(value, cached=False, fresh=True, source="SCREENER"),
                 stale=False
@@ -286,29 +148,13 @@ class StockTools:
                 error=str(e),
             )
 
-    # ───────────────────────────────────────────────
-    # COMBINED: Get everything for a stock
-    # ───────────────────────────────────────────────
-    async def get_stock_info(self, symbol: str) -> dict[str, Any]:
-        """Get complete stock info: price + fundamentals."""
-        quote_task = self.get_quote(symbol)
-        fund_task = self.get_fundamentals(symbol)
-        
-        quote_res, fund_res = await asyncio.gather(quote_task, fund_task)
-        
-        return {
-            "ticker": symbol,
-            "price": quote_res.data,
-            "fundamentals": fund_res.data,
-            "errors": [
-                e for e in [quote_res.error, fund_res.error] if e
-            ],
-        }
-
     @staticmethod
     def _extract_metric(text: str, pattern: str) -> float | None:
         match = re.search(pattern, text, flags=re.IGNORECASE)
-        return float(match.group(1)) if match else None
+        try:
+            return float(match.group(1).replace(",", "")) if match else None
+        except ValueError:
+            return None
 
 
 # ───────────────────────────────────────────────
@@ -318,28 +164,5 @@ class StockTools:
 stock_tools = StockTools()
 
 
-async def search_stocks(query: str) -> list[dict[str, Any]]:
-    """Search stocks by name. Returns top matches."""
-    return await stock_tools.search_by_name(query)
-
-
-async def get_quote(symbol: str) -> StockResult:
-    return await stock_tools.get_quote(symbol)
-
-
 async def get_fundamentals(symbol: str) -> StockResult:
     return await stock_tools.get_fundamentals(symbol)
-
-
-async def get_stock_info(symbol: str) -> dict[str, Any]:
-    """Get complete stock info (price + fundamentals)."""
-    return await stock_tools.get_stock_info(symbol)
-
-
-async def get_stock_news(symbol: str, company_name: str | None = None) -> StockResult:
-    # TODO: Implement with news API
-    return StockResult(data={"ticker": symbol.upper(), "news": [], "error": "NEWS_UNAVAILABLE"}, stale=False)
-
-
-def get_stock_tools() -> StockTools:
-    return stock_tools

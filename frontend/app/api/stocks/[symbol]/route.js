@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(request, { params }) {
   try {
     const session = await getSession();
@@ -24,9 +26,9 @@ export async function GET(request, { params }) {
     });
 
     if (!aiResponse.ok) {
-      const errText = await aiResponse.text();
+      const problem = await aiResponse.json().catch(() => ({}));
       return NextResponse.json(
-        { error: errText || "Failed to fetch stock details", code: "FETCH_FAILED" },
+        { error: problem.detail || problem.error || "Failed to fetch stock details", code: "FETCH_FAILED" },
         { status: aiResponse.status }
       );
     }

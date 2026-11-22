@@ -1,367 +1,188 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-export default function QAPage() {
-  const [messages, setMessages] = useState([
-    {
-      role: "assistant",
-      content: "Hello! I am your portfolio advisory assistant. Ask me questions about your current holdings, diversification, or sector concentrations.",
-      citations: [],
-    },
-  ]);
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [rateLimited, setRateLimited] = useState(false);
-  const [serviceDown, setServiceDown] = useState(false);
-  const [interrupted, setInterrupted] = useState(false);
+const prompts = ["What is my portfolio worth?", "How concentrated is my portfolio?", "How does realized P&L differ from unrealized P&L?"];
+const fieldLabels = {
+  ticker: "Ticker", quantity: "Units", avg_buy_price: "Average purchase price", current_price: "Price",
+  invested_cost: "Invested cost", market_value: "Market value", total_invested: "Invested cost",
+  total_current: "Market value", realized_pnl: "Realized P&L", unrealized_pnl: "Unrealized P&L",
+  price: "Price", symbol: "Ticker", currency: "Currency", published_at: "As of",
+  price_source: "Price source", priced_holdings: "Priced positions",
+};
+const control = "rounded-md border border-slate-700 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800 disabled:opacity-50";
 
-  const messagesEndRef = useRef(null);
+async function readAnswer(response, onProgress) {
+  if (response.status === 401) throw new Error("Your session expired. Sign in again to continue.");
+  if (response.status === 429) throw new Error("Too many questions in a short time. Wait a moment, then retry.");
+  if (!response.ok || !response.body) throw new Error("Q&A is temporarily unavailable.");
 
-  // Auto-scroll to bottom of chat
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let pending = "";
 
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
-
-  const handleSend = async (e, retryInput = null) => {
-    if (e) e.preventDefault();
-    const query = retryInput || input;
-    if (!query.trim()) return;
-
-    if (!retryInput) {
-      setInput("");
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      pending += decoder.decode(value, { stream: true });
+      const events = pending.split(/\r?\n\r?\n/);
+      pending = events.pop();
+      for (const event of events) {
+        const lines = event.split(/\r?\n/);
+        const kind = lines.find((line) => line.startsWith("event:"))?.slice(6).trim();
+        const data = lines.filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trimStart()).join("\n");
+        if (!data) continue;
+        const payload = JSON.parse(data);
+        if (kind === "status") onProgress(payload.message);
+        if (kind === "complete" && typeof payload.fullText === "string") return payload;
+        if (kind === "error") throw new Error("Q&A could not complete this request. Please retry.");
+      }
     }
+    throw new Error("The connection ended before the answer arrived. Please retry.");
+  } finally {
+    await reader.cancel().catch(() => {});
+    reader.releaseLock();
+  }
+}
 
-    setLoading(true);
-    setError(null);
-    setRateLimited(false);
-    setServiceDown(false);
-    setInterrupted(false);
+export default function QAPage() {
+  const [turns, setTurns] = useState([]);
+  const [draft, setDraft] = useState("");
+  const request = useRef(null);
+  const input = useRef(null);
+  const busy = turns.some((turn) => turn.status === "pending");
 
-    // Add user message and a placeholder assistant message
-    const userMsg = { role: "user", content: query };
-    const assistantPlaceholder = { role: "assistant", content: "", streaming: true, citations: [] };
+  useEffect(() => () => request.current?.abort(), []);
 
-    setMessages((prev) => [...prev, userMsg, assistantPlaceholder]);
+  async function send(question, retryIndex = turns.length) {
+    question = question.trim();
+    if (!question || request.current) return;
+    const controller = new AbortController();
+    request.current = controller;
+
+    const conversationHistory = turns.slice(0, retryIndex)
+      .filter((turn) => turn.status === "complete")
+      .flatMap((turn) => [{ role: "user", content: turn.question }, { role: "assistant", content: turn.answer }])
+      .slice(-8);
+    const replaceTurn = (values) => setTurns((previous) => previous.map((turn, index) =>
+      index === retryIndex ? { ...turn, ...values } : turn
+    ));
+
+    const pending = { question, status: "pending", progress: "Reading your question" };
+    setTurns((previous) => retryIndex === previous.length
+      ? [...previous, pending]
+      : previous.map((turn, index) => index === retryIndex ? pending : turn));
+    if (retryIndex === turns.length) setDraft("");
 
     try {
       const response = await fetch("/api/qa", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          question: query,
-          conversationHistory: messages
-            .filter((m) => !m.streaming)
-            .map((m) => ({ role: m.role, content: m.content })),
-        }),
+        signal: controller.signal,
+        body: JSON.stringify({ question, conversationHistory }),
       });
-
-      if (response.status === 429) {
-        setRateLimited(true);
-        throw new Error("Too many requests. Please wait.");
+      const answer = await readAnswer(response, (progress) => replaceTurn({ progress }));
+      replaceTurn({ status: "complete", answer: answer.fullText, citations: answer.citations });
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        const message = error instanceof TypeError || error instanceof SyntaxError
+          ? "Q&A lost its connection. Please retry."
+          : error.message;
+        replaceTurn({ status: "failed", error: message });
       }
-      if (response.status === 503) {
-        setServiceDown(true);
-        throw new Error("AI service temporarily unavailable. Using rule-based analysis.");
-      }
-      if (!response.ok) {
-        const errJson = await response.json().catch(() => ({}));
-        throw new Error(errJson.error || "Failed to submit question");
-      }
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder("utf-8");
-      let buffer = "";
-      let completeReceived = false;
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-          if (!completeReceived) {
-            setInterrupted(true);
-          }
-          break;
-        }
-
-        buffer += decoder.decode(value, { stream: true });
-        let boundary = buffer.indexOf("\n\n");
-        while (boundary !== -1) {
-          const rawMessage = buffer.slice(0, boundary + 2);
-          buffer = buffer.slice(boundary + 2);
-
-          const lines = rawMessage.split("\n");
-          let eventName = "";
-          let dataStr = "";
-
-          for (const line of lines) {
-            if (line.startsWith("event: ")) {
-              eventName = line.slice(7).trim();
-            } else if (line.startsWith("data: ")) {
-              dataStr = line.slice(6).trim();
-            }
-          }
-
-          if (eventName === "chunk" && dataStr) {
-            try {
-              const chunkData = JSON.parse(dataStr);
-              if (chunkData.text) {
-                setMessages((prev) => {
-                  if (prev.length === 0) return prev;
-                  const updated = [...prev];
-                  const lastIdx = updated.length - 1;
-                  const last = updated[lastIdx];
-                  if (last && last.role === "assistant") {
-                    updated[lastIdx] = {
-                      ...last,
-                      content: last.content + chunkData.text
-                    };
-                  }
-                  return updated;
-                });
-              }
-            } catch (_) {}
-          } else if (eventName === "complete" && dataStr) {
-            completeReceived = true;
-            try {
-              const completeData = JSON.parse(dataStr);
-              setMessages((prev) => {
-                if (prev.length === 0) return prev;
-                const updated = [...prev];
-                const lastIdx = updated.length - 1;
-                const last = updated[lastIdx];
-                if (last && last.role === "assistant") {
-                  updated[lastIdx] = {
-                    ...last,
-                    streaming: false,
-                    citations: completeData.citations || [],
-                    questionType: completeData.questionType || "general"
-                  };
-                }
-                return updated;
-              });
-            } catch (_) {}
-          } else if (eventName === "error" && dataStr) {
-            try {
-              const errData = JSON.parse(dataStr);
-              throw new Error(errData.error || "Generation error");
-            } catch (e) {
-              setError(e.message);
-            }
-          }
-
-          boundary = buffer.indexOf("\n\n");
-        }
-      }
-    } catch (err) {
-      setError(err.message);
-      // Clean up the placeholder if we didn't receive any chunks
-      setMessages((prev) => {
-        const updated = [...prev];
-        const last = updated[updated.length - 1];
-        if (last && last.role === "assistant" && !last.content) {
-          return updated.slice(0, -1);
-        }
-        if (last && last.role === "assistant") {
-          last.streaming = false;
-        }
-        return updated;
-      });
     } finally {
-      setLoading(false);
+      request.current = null;
     }
-  };
-
-  const handleRetry = () => {
-    // Find the last user question to retry
-    const userMessages = messages.filter((m) => m.role === "user");
-    if (userMessages.length > 0) {
-      const lastQuestion = userMessages[userMessages.length - 1].content;
-      // Remove last user message and following assistant message
-      setMessages((prev) => {
-        let lastUserIdx = -1;
-        for (let i = prev.length - 1; i >= 0; i--) {
-          if (prev[i].role === "user") {
-            lastUserIdx = i;
-            break;
-          }
-        }
-        if (lastUserIdx !== -1) {
-          return prev.slice(0, lastUserIdx);
-        }
-        return prev;
-      });
-      handleSend(null, lastQuestion);
-    }
-  };
+  }
 
   return (
-    <div className="space-y-6">
-      {/* Page Header */}
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Q&A Assistant</h1>
-        <p className="text-sm text-slate-400">
-          Query regulatory guidelines and get advisory help on your portfolio.
-        </p>
+    <div className="mx-auto max-w-3xl">
+      <header className="border-b border-slate-800 pb-5">
+        <h1 className="text-3xl font-semibold tracking-tight">Portfolio Q&A</h1>
+        <p className="mt-1 text-sm text-slate-400">Ask about your holdings, Indian equities, or a finance concept.</p>
+      </header>
+
+      {turns.length === 0 && (
+        <ul aria-label="Suggested questions" className="flex flex-wrap gap-2 py-6">
+          {prompts.map((prompt) => <li key={prompt}>
+            <button type="button" className={control} onClick={() => { setDraft(prompt); input.current?.focus(); }}>{prompt}</button>
+          </li>)}
+        </ul>
+      )}
+
+      <div className="divide-y divide-slate-800">
+        {turns.map((turn, index) => (
+          <article key={index} className="space-y-4 py-5">
+            <h2 className="break-words text-lg font-medium text-slate-100">{turn.question}</h2>
+            {turn.status === "pending" && <p role="status" className="text-sm text-slate-400">{turn.progress}…</p>}
+            {turn.status === "failed" && (
+              <div className="flex flex-wrap items-center gap-3">
+                <p role="alert" className="text-sm text-amber-300">{turn.error}</p>
+                {index === turns.length - 1 && <button type="button" onClick={() => send(turn.question, index)} disabled={busy} className={control}>Retry</button>}
+              </div>
+            )}
+            {turn.status === "complete" && (
+              <>
+                <div className="break-words text-sm leading-relaxed text-slate-200 [&_a]:text-sky-300 [&_a]:underline [&_li]:my-1 [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:mb-3 [&_table]:my-3 [&_table]:block [&_table]:overflow-x-auto [&_td]:border [&_td]:border-slate-700 [&_td]:p-2 [&_th]:border [&_th]:border-slate-700 [&_th]:p-2 [&_ul]:list-disc [&_ul]:pl-6">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{turn.answer}</ReactMarkdown>
+                </div>
+                {turn.citations?.length > 0 && <Sources citations={turn.citations} />}
+              </>
+            )}
+          </article>
+        ))}
       </div>
 
-      {/* Banners for Errors */}
-      {serviceDown && (
-        <div className="rounded-lg border border-amber-900 bg-amber-950/20 p-3 text-sm text-amber-400">
-          ⚠️ AI service temporarily unavailable. Using rule-based analysis.
+      <form className="space-y-2 border-t border-slate-800 bg-slate-950 pt-4" onSubmit={(event) => { event.preventDefault(); send(draft); }}>
+        <label htmlFor="question" className="block text-sm font-medium">Your question</label>
+        <textarea id="question" ref={input} rows={2} maxLength={3000} value={draft} onChange={(event) => setDraft(event.target.value)}
+          className="w-full resize-y rounded-md border border-slate-700 bg-slate-900/40 px-3 py-2 text-sm text-slate-100"
+          placeholder="Ask a question or follow up" />
+        <div className="flex justify-end">
+          <button type="submit" disabled={busy || !draft.trim()} className="rounded-md bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-white disabled:opacity-50">{busy ? "Waiting for answer" : "Send question"}</button>
         </div>
-      )}
-      {rateLimited && (
-        <div className="rounded-lg border border-red-900 bg-red-950/20 p-3 text-sm text-red-400">
-          ⚠️ Too many requests. Please wait.
-        </div>
-      )}
-
-      {/* Chat Container */}
-      <Card className="flex flex-col border-slate-800 bg-slate-900/30 h-[600px]">
-        {/* Messages Log */}
-        <CardContent className="flex-1 overflow-y-auto p-6 space-y-4">
-          {messages.map((msg, index) => (
-            <div
-              key={index}
-              className={`flex flex-col ${
-                msg.role === "user" ? "items-end" : "items-start"
-              }`}
-            >
-              <div
-                className={`rounded-2xl px-4 py-2.5 max-w-[85%] text-sm leading-relaxed ${
-                  msg.role === "user"
-                    ? "bg-sky-600 text-slate-50 rounded-br-none"
-                    : "bg-slate-800/80 text-slate-100 rounded-bl-none border border-slate-700/50"
-                }`}
-              >
-                {msg.role === "user" ? (
-                  <p>{msg.content}</p>
-                ) : (
-                  <div className="prose prose-invert max-w-none">
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
-                      components={{
-                        p: ({node, ...props}) => <p className="mb-2 last:mb-0" {...props} />,
-                        ul: ({node, ...props}) => <ul className="list-disc pl-4 mb-2 space-y-0.5" {...props} />,
-                        li: ({node, ...props}) => <li className="text-slate-300" {...props} />,
-                      }}
-                    >
-                      {msg.content || (msg.streaming ? "Thinking..." : "")}
-                    </ReactMarkdown>
-                  </div>
-                )}
-              </div>
-
-              {/* Question Type Badge */}
-              {msg.role === "assistant" && !msg.streaming && msg.questionType && (
-                <div className="mt-1 flex gap-1.5 pl-1">
-                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold border ${
-                    (msg.questionType === "portfolio" || msg.questionType === "portfolio_rag")
-                      ? "bg-sky-500/10 text-sky-400 border-sky-500/20"
-                      : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                  }`}>
-                    {(msg.questionType === "portfolio" || msg.questionType === "portfolio_rag") ? "📊 Portfolio Query" : "📚 General Finance"}
-                  </span>
-                </div>
-              )}
-
-              {/* Citations / Evidence cards */}
-              {msg.role === "assistant" && msg.citations && msg.citations.length > 0 && (
-                <div className="mt-2 w-full max-w-[85%] space-y-1.5 pl-2">
-                  <p className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Citations ({msg.citations.length})</p>
-                  {msg.citations.map((cite, i) => (
-                    <CitationCard key={i} citation={cite} />
-                  ))}
-                </div>
-              )}
-            </div>
-          ))}
-
-          {/* Interrupted message state */}
-          {interrupted && !loading && (
-            <div className="flex flex-col items-center justify-center p-4 border border-dashed border-slate-800 rounded-xl bg-slate-900/10 gap-2">
-              <p className="text-xs text-slate-400">Stream interrupted before completion.</p>
-              <Button size="sm" variant="outline" className="border-slate-700 text-slate-300" onClick={handleRetry}>
-                Retry Generation
-              </Button>
-            </div>
-          )}
-
-          {error && !serviceDown && !rateLimited && !interrupted && (
-            <div className="flex flex-col items-center justify-center p-4 border border-dashed border-red-950 rounded-xl bg-red-950/10 gap-2">
-              <p className="text-xs text-red-400">Error: {error}</p>
-              <Button size="sm" variant="outline" className="border-red-900/40 text-red-400 hover:bg-red-950/50" onClick={handleRetry}>
-                Retry Question
-              </Button>
-            </div>
-          )}
-
-          <div ref={messagesEndRef} />
-        </CardContent>
-
-        {/* Input Form Footer */}
-        <CardFooter className="border-t border-slate-800/80 bg-slate-950/20 p-4">
-          <form onSubmit={handleSend} className="flex w-full items-center gap-2">
-            <input
-              type="text"
-              placeholder="Ask about sector concentration or SEBI guidelines..."
-              className="flex-1 rounded-lg border border-slate-800 bg-slate-950 px-4 py-2 text-sm text-slate-100 placeholder-slate-500 focus:border-sky-500 focus:outline-none"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              disabled={loading}
-            />
-            <Button
-              type="submit"
-              disabled={loading || !input.trim()}
-              className="bg-sky-600 hover:bg-sky-500 text-slate-50"
-            >
-              {loading ? "Sending..." : "Send"}
-            </Button>
-          </form>
-        </CardFooter>
-      </Card>
+      </form>
     </div>
   );
 }
 
-// Collapsible Citation Card Component
-function CitationCard({ citation }) {
-  const [open, setOpen] = useState(false);
-
+function Sources({ citations }) {
   return (
-    <div className="rounded border border-slate-800 bg-slate-950/50 text-[11px] overflow-hidden transition-all">
-      <button
-        type="button"
-        className="flex w-full items-center justify-between px-3 py-1.5 text-left text-slate-400 hover:bg-slate-800/40 transition-colors"
-        onClick={() => setOpen(!open)}
-      >
-        <span className="font-semibold text-slate-300">
-          [{citation.source}] {citation.docTitle || "Document"}
-        </span>
-        <span className="text-[10px] text-slate-500">
-          {open ? "Hide excerpt ▲" : "Show excerpt ▼"}
-        </span>
-      </button>
-      {open && (
-        <div className="border-t border-slate-900 bg-slate-950 p-2.5 space-y-1">
-          <div className="flex justify-between text-[10px] text-slate-500">
-            <span>Section: {citation.section || "N/A"}</span>
-            <span>Date: {citation.date || "N/A"}</span>
-          </div>
-          <p className="italic text-slate-300 leading-normal border-l-2 border-sky-500/50 pl-2 mt-1">
-            "{citation.relevantText}"
-          </p>
-        </div>
-      )}
-    </div>
+    <details className="rounded-md border border-slate-800 px-3 py-2 text-sm">
+      <summary className="cursor-pointer text-slate-300">Sources ({citations.length})</summary>
+      <ul className="mt-2 divide-y divide-slate-800">
+        {citations.map((citation, index) => (
+          <li key={citation.section || index} className="py-3">
+            <p className="font-medium text-slate-200">{citation.docTitle || citation.source}</p>
+            <p className="mt-1 text-xs text-slate-400">{[citation.docTitle && citation.source, citation.date].filter(Boolean).join(" · ")}</p>
+            <SourceEvidence content={citation.relevantText} />
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
+function SourceEvidence({ content }) {
+  if (!content) return null;
+  let facts;
+  try {
+    const record = JSON.parse(content);
+    facts = Object.entries(record || {}).filter(([key, value]) =>
+      Object.hasOwn(fieldLabels, key) && (value === null || typeof value === "number" || typeof value === "string"));
+  } catch {
+    return <p className="mt-2 break-words text-slate-400">{content}</p>;
+  }
+  if (!facts.length) return null;
+  return (
+    <dl className="mt-2 space-y-1 text-slate-400">
+      {facts.map(([key, value]) => <div key={key} className="flex flex-wrap justify-between gap-x-4">
+        <dt>{fieldLabels[key]}</dt>
+        <dd className="tabular-nums">{value ?? "Unavailable"}</dd>
+      </div>)}
+    </dl>
   );
 }

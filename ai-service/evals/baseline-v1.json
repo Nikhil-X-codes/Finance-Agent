@@ -1,0 +1,12 @@
+{
+  "fixture_version": 1,
+  "scope": "Initial four-case live sample before deterministic holding-quantity rendering",
+  "judge_provider": "Groq OpenAI-compatible API",
+  "cases": ["portfolio_units", "education", "mixed_conflicting_prices", "historical_date"],
+  "averages": {
+    "faithfulness": 1.0,
+    "context_precision": 0.9999999999166667,
+    "context_recall": 1.0,
+    "factual_correctness": 0.4175
+  }
+}

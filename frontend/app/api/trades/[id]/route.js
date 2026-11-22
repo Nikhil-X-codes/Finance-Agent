@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
-import { deleteTradeById } from "@/lib/db";
+import { deleteTradeById, PortfolioConflict } from "@/lib/db";
 
 export async function DELETE(_request, { params }) {
   try {
@@ -14,7 +14,7 @@ export async function DELETE(_request, { params }) {
 
     const { id } = params;
 
-    const result = deleteTradeById(session.userId, id);
+    const result = await deleteTradeById(session.userId, id);
     if (!result || !result.deleted) {
       if (result?.reason === "FORBIDDEN") {
         return NextResponse.json(
@@ -30,6 +30,9 @@ export async function DELETE(_request, { params }) {
 
     return NextResponse.json({ deleted: true });
   } catch (error) {
+    if (error instanceof PortfolioConflict) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: 409 });
+    }
     console.error("Delete trade error:", error);
     return NextResponse.json(
       { error: "Failed to delete trade", code: "INTERNAL_ERROR" },

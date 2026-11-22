@@ -1,18 +1,18 @@
-"""SQLite TTL cache with stale-on-failure fallback."""
+"""Postgres TTL cache with stale-on-provider-failure fallback."""
 
 from __future__ import annotations
 
-import json
-import sqlite3
+import inspect
+import logging
 import time
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, Callable
 
-from ..config.constants import SQLITE_CACHE_TABLE
+import psycopg
+from psycopg.types.json import Jsonb
+from psycopg_pool import AsyncConnectionPool, PoolClosed, PoolTimeout
 
-
-Fetcher = Callable[[], Any]
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -23,107 +23,75 @@ class CacheResult:
 
 class CacheService:
     def __init__(self) -> None:
-        self._path: str | None = None
+        self._pool: AsyncConnectionPool | None = None
 
-    def initialize(self, sqlite_path: str) -> None:
-        self._path = sqlite_path
-        Path(sqlite_path).parent.mkdir(parents=True, exist_ok=True)
-        self._ensure_schema()
+    def initialize(self, pool: AsyncConnectionPool) -> None:
+        self._pool = pool
 
-    def _connect(self) -> sqlite3.Connection:
-        if self._path is None:
-            raise RuntimeError("CacheService not initialized")
-        conn = sqlite3.connect(self._path)
-        conn.row_factory = sqlite3.Row
-        return conn
+    def shutdown(self) -> None:
+        self._pool = None
 
-    def _ensure_schema(self) -> None:
-        with self._connect() as conn:
-            conn.execute(
-                f"""
-                CREATE TABLE IF NOT EXISTS {SQLITE_CACHE_TABLE} (
-                  cache_key TEXT PRIMARY KEY,
-                  response_json TEXT NOT NULL,
-                  cached_at INTEGER NOT NULL,
-                  expires_at INTEGER NOT NULL,
-                  source TEXT
-                )
-                """
-            )
-            conn.commit()
-
-    def get(self, cache_key: str) -> dict[str, Any] | None:
-        with self._connect() as conn:
-            row = conn.execute(
-                f"SELECT response_json, expires_at FROM {SQLITE_CACHE_TABLE} WHERE cache_key = ?",
-                (cache_key,),
-            ).fetchone()
+    async def get(self, cache_key: str) -> dict[str, Any] | None:
+        if self._pool is None:
+            return None
+        try:
+            async with self._pool.connection(timeout=2) as conn:
+                row = await (await conn.execute(
+                    "SELECT response_json, expires_at FROM finance_agent.api_cache WHERE cache_key = %s",
+                    (cache_key,),
+                )).fetchone()
+        except (psycopg.Error, PoolClosed, PoolTimeout):
+            logger.warning("Could not read the Postgres market-data cache")
+            return None
         if row is None:
             return None
-        payload = json.loads(row["response_json"])
-        if isinstance(payload, dict):
-            payload["_cache_expires_at"] = int(row["expires_at"])
-            return payload
-        else:
-            return {
-                "__wrapped_list__": payload,
-                "_cache_expires_at": int(row["expires_at"])
-            }
+        payload = row["response_json"]
+        if not isinstance(payload, dict):
+            payload = {"__wrapped_list__": payload}
+        return {**payload, "_cache_expires_at": row["expires_at"]}
 
-    @staticmethod
-    def _without_metadata(payload: dict[str, Any]) -> dict[str, Any]:
-        return {
-            key: value
-            for key, value in payload.items()
-            if key not in {"_cache_expires_at", "_stale"}
-        }
-
-    def set(self, cache_key: str, value: Any, ttl_seconds: int, source: str | None = None) -> None:
+    async def set(self, cache_key: str, value: Any, ttl_seconds: int, source: str | None = None) -> None:
+        if self._pool is None:
+            return
         now = int(time.time())
-        expires_at = now + ttl_seconds
-        with self._connect() as conn:
-            conn.execute(
-                f"""
-                INSERT INTO {SQLITE_CACHE_TABLE} (cache_key, response_json, cached_at, expires_at, source)
-                VALUES (?, ?, ?, ?, ?)
-                ON CONFLICT(cache_key) DO UPDATE SET
-                  response_json = excluded.response_json,
-                  cached_at = excluded.cached_at,
-                  expires_at = excluded.expires_at,
-                  source = excluded.source
-                """,
-                (cache_key, json.dumps(value), now, expires_at, source),
-            )
-            conn.commit()
+        try:
+            async with self._pool.connection(timeout=2) as conn:
+                await conn.execute(
+                    """
+                    INSERT INTO finance_agent.api_cache (cache_key, response_json, cached_at, expires_at, source)
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON CONFLICT (cache_key) DO UPDATE SET response_json = EXCLUDED.response_json,
+                      cached_at = EXCLUDED.cached_at, expires_at = EXCLUDED.expires_at, source = EXCLUDED.source
+                    """,
+                    (cache_key, Jsonb(value), now, now + ttl_seconds, source),
+                )
+        except (psycopg.Error, PoolClosed, PoolTimeout):
+            logger.warning("Could not write the Postgres market-data cache")
 
     async def get_or_fetch(
-        self,
-        cache_key: str,
-        ttl_seconds: int,
-        fetcher: Fetcher,
-        source: str | None = None,
+        self, cache_key: str, ttl_seconds: int, fetcher: Callable[[], Any], source: str | None = None,
     ) -> CacheResult:
-        cached = self.get(cache_key)
+        cached = await self.get(cache_key)
+        cached_value = None
         if cached is not None:
-            expires_at = cached.pop("_cache_expires_at", 0)
+            expires_at = cached.pop("_cache_expires_at")
+            cached.pop("_stale", None)
+            cached_value = cached.get("__wrapped_list__", cached)
             if expires_at > int(time.time()):
-                val = cached.get("__wrapped_list__") if "__wrapped_list__" in cached else cached
-                return CacheResult(value=val, stale=False)
-
+                return CacheResult(value=cached_value)
         try:
             value = fetcher()
-            if hasattr(value, "__await__"):
-                value = await value  # type: ignore[func-returns-value]
-            self.set(cache_key, value, ttl_seconds, source=source)
-            return CacheResult(value=value, stale=False)
+            if inspect.isawaitable(value):
+                value = await value
         except Exception:
-            if cached is not None:
-                stale_value = self._without_metadata(cached)
-                stale_value = stale_value.get("__wrapped_list__") if "__wrapped_list__" in stale_value else stale_value
-                if isinstance(stale_value, dict):
-                    stale_value["_stale"] = True
-                return CacheResult(value=stale_value, stale=True)
-            raise
+            if cached is None:
+                raise
+            if isinstance(cached_value, dict):
+                cached_value["_stale"] = True
+            return CacheResult(value=cached_value, stale=True)
+
+        await self.set(cache_key, value, ttl_seconds, source=source)
+        return CacheResult(value=value)
 
 
 cache_service = CacheService()

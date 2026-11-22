@@ -25,66 +25,12 @@ export default function TradeValidator({ open, onClose, tradeData, onConfirm }) 
     setResult(null);
 
     try {
-      // 1. Get user id from session API
-      const userRes = await fetch("/api/auth/me");
-      if (!userRes.ok) throw new Error("Please log in to validate trades.");
-      const userData = await userRes.json();
-      const userId = userData.userId;
-
-      // 2. Get current portfolio holdings from portfolio API
-      const portRes = await fetch("/api/portfolio");
-      let portfolioHoldings = [];
-      if (portRes.ok) {
-        const portData = await portRes.json();
-        // Map keys to match backend's Holding model (avgBuyPrice -> avg_buy_price, assetType -> asset_type)
-        portfolioHoldings = (portData.holdings || []).map(h => ({
-          isin: h.isin || "INE000000000",
-          ticker: h.ticker || "",
-          name: h.name || h.ticker || "",
-          quantity: Number(h.quantity),
-          avg_buy_price: Number(h.avgBuyPrice),
-          asset_type: h.assetType === "MUTUAL_FUND" ? "MUTUAL_FUND" : "STOCK",
-          sector: h.sector || "Other"
-        }));
-      }
-
-      // 3. Pre-flight insufficient quantity sell check (local audit)
-      const actionUpper = tradeData.transactionType.toUpperCase();
-      const qty = Number(tradeData.quantity);
-      if (actionUpper === "SELL" || actionUpper === "TRIM" || actionUpper === "EXIT") {
-        const holding = portfolioHoldings.find(
-          (h) => h.ticker.toUpperCase() === tradeData.ticker.toUpperCase()
-        );
-        if (!holding || holding.quantity < qty) {
-          setResult({
-            allowed: false,
-            ticker: tradeData.ticker.toUpperCase(),
-            action: actionUpper,
-            quantity: qty,
-            price: Number(tradeData.price),
-            new_portfolio_weight: 0,
-            limit_threshold: 0,
-            warnings: [
-              `Insufficient quantity to execute ${actionUpper}. You currently hold ${
-                holding ? holding.quantity : 0
-              } shares of ${tradeData.ticker.toUpperCase()} but attempted to sell/trim ${qty} shares.`,
-            ],
-            citations: ["Local Holdings Audit"],
-          });
-          setLoading(false);
-          return;
-        }
-      }
-
-      // 4. Call client-side API helper which POSTs directly to FastAPI
-      const proposedTradeData = {
+      const data = await validateTradeApi({
         ticker: tradeData.ticker.toUpperCase(),
-        action: actionUpper,
-        quantity: qty,
-        price: Number(tradeData.price)
-      };
-
-      const data = await validateTradeApi(userId, proposedTradeData, portfolioHoldings);
+        action: tradeData.transactionType.toUpperCase(),
+        quantity: Number(tradeData.quantity),
+        price: Number(tradeData.price),
+      });
       setResult(data);
     } catch (err) {
       console.error(err);
@@ -169,7 +115,7 @@ export default function TradeValidator({ open, onClose, tradeData, onConfirm }) 
               <div className="flex items-center justify-between">
                 <span className="font-semibold text-slate-300 uppercase tracking-wider">Validation Status</span>
                 <span className={`font-bold ${result.allowed ? "text-emerald-400" : "text-red-400"}`}>
-                  {result.allowed ? "VALID (COMPLIANT)" : "INVALID (NON-COMPLIANT)"}
+                  {result.status === "unavailable" ? "ASSESSMENT UNAVAILABLE" : result.allowed ? "FAVORABLE ASSESSMENT" : "REVIEW REQUIRED"}
                 </span>
               </div>
               
@@ -242,7 +188,7 @@ export default function TradeValidator({ open, onClose, tradeData, onConfirm }) 
             onConfirm(tradeData);
             onClose();
           }}
-          disabled={loading || !result}
+          disabled={loading || !result || result.status === "blocked"}
           className="text-xs px-4 bg-sky-600 hover:bg-sky-500 text-slate-50"
         >
           Proceed

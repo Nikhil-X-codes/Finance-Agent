@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { getReportById, updateReport, deleteReport } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(request, { params }) {
   try {
     const session = await getSession();
@@ -20,7 +22,7 @@ export async function GET(request, { params }) {
       );
     }
 
-    const report = getReportById(session.userId, id);
+    const report = await getReportById(session.userId, id);
     if (!report) {
       return NextResponse.json(
         { error: "Report not found", code: "NOT_FOUND" },
@@ -65,7 +67,7 @@ export async function PUT(request, { params }) {
       );
     }
 
-    const report = getReportById(session.userId, id);
+    const report = await getReportById(session.userId, id);
     if (!report) {
       return NextResponse.json(
         { error: "Report not found", code: "NOT_FOUND" },
@@ -78,7 +80,7 @@ export async function PUT(request, { params }) {
       name: name.trim()
     };
 
-    const success = updateReport(session.userId, id, updatedReportJson);
+    const success = await updateReport(session.userId, id, updatedReportJson);
     if (!success) {
       throw new Error("Failed to update report in database");
     }
@@ -104,7 +106,7 @@ export async function DELETE(request, { params }) {
     }
 
     const { id } = params;
-    const success = deleteReport(session.userId, id);
+    const success = await deleteReport(session.userId, id);
     if (!success) {
       return NextResponse.json(
         { error: "Report not found or delete failed", code: "NOT_FOUND" },

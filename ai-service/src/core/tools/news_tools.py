@@ -120,7 +120,7 @@ class NewsTools:
     async def get_stock_news(self, symbol: str, company_name: str | None = None) -> NewsResult:
         ticker = symbol.upper().strip()
         cache_key = self._cache_key(ticker)
-        cached = cache_service.get(cache_key)
+        cached = await cache_service.get(cache_key)
         
         # Return fresh cache
         if cached is not None and self._is_fresh(cached):
@@ -142,7 +142,7 @@ class NewsTools:
                     "cached": False,
                     "fresh": True,
                 }
-                cache_service.set(cache_key, value, STOCK_NEWS_CACHE_TTL_SECONDS, source="GoogleNewsRSS")
+                await cache_service.set(cache_key, value, STOCK_NEWS_CACHE_TTL_SECONDS, source="GoogleNewsRSS")
                 return NewsResult(data=value, stale=False)
         except Exception as rss_error:
             pass
@@ -164,7 +164,7 @@ class NewsTools:
                 "cached": False,
                 "fresh": True,
             }
-            cache_service.set(cache_key, value, STOCK_NEWS_CACHE_TTL_SECONDS, source="NewsAPI")
+            await cache_service.set(cache_key, value, STOCK_NEWS_CACHE_TTL_SECONDS, source="NewsAPI")
             return NewsResult(data=value, stale=False)
             
         except Exception as exc:
@@ -187,20 +187,3 @@ news_tools = NewsTools()
 
 async def get_stock_news(symbol: str, company_name: str | None = None) -> NewsResult:
     return await news_tools.get_stock_news(symbol, company_name)
-
-
-async def get_news(symbol: str | None = None, company_name: str | None = None) -> dict[str, Any]:
-    result = await news_tools.get_stock_news(symbol or "")
-    return {"data": result.data, "stale": result.stale, "error": result.error}
-
-
-def get_news_tools() -> NewsTools:
-    return news_tools
-
-
-
-
-
-
-
-

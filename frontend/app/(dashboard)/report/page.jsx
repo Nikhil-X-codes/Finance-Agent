@@ -105,7 +105,7 @@ function ReportContent() {
       }
       if (response.status === 503) {
         setServiceDown(true);
-        throw new Error("AI service temporarily unavailable. Using rule-based analysis.");
+        throw new Error("AI service is temporarily unavailable.");
       }
       if (!response.ok) {
         const errJson = await response.json().catch(() => ({}));
@@ -257,7 +257,7 @@ function ReportContent() {
       {/* Banners for Errors */}
       {serviceDown && (
         <div className="rounded-lg border border-amber-900 bg-amber-950/20 p-3 text-sm text-amber-400">
-          ⚠️ AI service temporarily unavailable. Using rule-based analysis.
+          ⚠️ AI service is temporarily unavailable.
         </div>
       )}
       {rateLimited && (
@@ -391,9 +391,9 @@ function ReportContent() {
                       </span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-xs text-slate-400">Total Value</span>
+                      <span className="text-xs text-slate-400">Invested Cost</span>
                       <span className="text-sm font-semibold text-slate-100">
-                        ₹{(report.portfolioSummary?.totalValue || 0).toLocaleString("en-IN")}
+                        ₹{(report.portfolioSummary?.investedCost ?? report.portfolioSummary?.totalValue ?? 0).toLocaleString("en-IN")}
                       </span>
                     </div>
                     <div className="flex items-center justify-between">

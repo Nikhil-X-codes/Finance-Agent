@@ -1,70 +1,46 @@
-"""FastAPI route for portfolio Q&A with SSE streaming."""
-
-from __future__ import annotations
-
-import asyncio
-import json
-import uuid
+"""Stream Q&A workflow progress and its completed, cited answer."""
 
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 
-from src.config.constants import QA_RATE_LIMIT_PER_MINUTE
+from src.config.settings import settings
 from src.config.models import QARequest
-from src.core.graph import agent_graph, tracer
+from src.core.qa_graph import default_qa_providers
 from src.core.rate_limit import limiter
+from src.api.sse import stream_event
 
 router = APIRouter()
+PROGRESS = {
+    "parse_question": "Question classified",
+    "retrieve_portfolio": "Portfolio records checked",
+    "retrieve_market": "Market data checked",
+    "check_evidence": "Evidence reviewed",
+}
 
 
-@limiter.limit(f"{QA_RATE_LIMIT_PER_MINUTE}/minute")
 @router.post("/qa")
+@limiter.limit(f"{settings.qa_rate_limit_per_minute}/minute")
 async def qa(request: Request, payload: QARequest) -> StreamingResponse:
-    """Submit a question about portfolio and stream responses and citations back using SSE."""
-    initial_state = {
-        "user_id": payload.user_id,
-        "request_type": "QA",
+    initial = {
         "question": payload.question,
-        "conversation_history": payload.conversation_history or [],
-        "raw_holdings": [h.model_dump() for h in (payload.portfolio_context or [])],
-        "errors": [],
-        "current_node": "start"
+        "conversation_history": [turn.model_dump() for turn in payload.conversation_history],
+        "raw_holdings": [h.model_dump(mode="json") for h in payload.portfolio_context or []],
     }
 
-    async def qa_event_generator():
+    async def events():
+        result = {}
         try:
-            config = {
-                "configurable": {"thread_id": f"qa-{payload.user_id}-{uuid.uuid4().hex[:8]}"},
-                "callbacks": [tracer]
-            }
-            
-            # Execute the QA agent subgraph
-            state_result = await agent_graph.ainvoke(initial_state, config)
-            
-            qa_response = state_result.get("qa_response") or "No response generated."
-            qa_citations = state_result.get("qa_citations") or []
-            
-            # Stream the response text in small word packets
-            words = qa_response.split(" ")
-            chunk = ""
-            for word in words:
-                chunk += word + " "
-                if len(chunk) > 20:
-                    yield f"event: chunk\ndata: {json.dumps({'text': chunk})}\n\n"
-                    chunk = ""
-                    await asyncio.sleep(0.02)  # 20ms delay
-            if chunk:
-                yield f"event: chunk\ndata: {json.dumps({'text': chunk})}\n\n"
-                
-            # Yield complete event
-            complete_data = {
-                "fullText": qa_response,
-                "citations": qa_citations,
-                "questionType": state_result.get("question_type") or "general"
-            }
-            yield f"event: complete\ndata: {json.dumps(complete_data)}\n\n"
-            
-        except Exception as e:
-            yield f"event: error\ndata: {json.dumps({'error': str(e), 'code': 'GENERATION_FAILED'})}\n\n"
+            yield stream_event("status", {"node": "start", "message": "Reading your question"})
+            async for update in request.app.state.qa_graph.astream(initial, context=default_qa_providers(), stream_mode="updates"):
+                for node, values in update.items():
+                    result.update(values or {})
+                    if node in PROGRESS:
+                        yield stream_event("status", {"node": node, "message": PROGRESS[node]})
+            yield stream_event("complete", {
+                "fullText": result["qa_response"], "citations": result["qa_citations"],
+                "questionType": result["question_type"], "answerStatus": result["answer_status"],
+            })
+        except Exception:
+            yield stream_event("error", {"error": "Q&A is temporarily unavailable.", "code": "GENERATION_FAILED"})
 
-    return StreamingResponse(qa_event_generator(), media_type="text/event-stream")
+    return StreamingResponse(events(), media_type="text/event-stream", headers={"Cache-Control": "no-store"})

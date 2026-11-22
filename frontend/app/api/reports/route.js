@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { getReportsByUser } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   try {
     const session = await getSession();
@@ -12,7 +14,7 @@ export async function GET() {
       );
     }
 
-    const reports = getReportsByUser(session.userId);
+    const reports = await getReportsByUser(session.userId);
     const mapped = reports.map((row) => ({
       id: row.id,
       name: row.report_json?.name || `Report ${new Date(row.created_at).toLocaleDateString()}`,

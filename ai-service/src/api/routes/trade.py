@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import uuid
 from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from src.config.models import Holding
-from src.core.graph import agent_graph, tracer
+from src.services.trade_review import review_trade
 
 router = APIRouter()
 
@@ -29,26 +28,6 @@ class ValidateTradeRequest(BaseModel):
 
 @router.post("/validate-trade")
 async def validate_proposed_trade(payload: ValidateTradeRequest) -> dict[str, Any]:
-    """Validate a proposed trade against regulatory guidelines by invoking the trade_validator node."""
-    initial_state = {
-        "user_id": payload.user_id,
-        "request_type": "TRADE_VALIDATE",
-        "proposed_trade": payload.proposed_trade.model_dump(),
-        "raw_holdings": [h.model_dump() for h in payload.portfolio],
-        "errors": [],
-        "current_node": "start"
-    }
-
-    config = {
-        "configurable": {"thread_id": f"trade-{payload.user_id}-{uuid.uuid4().hex[:8]}"},
-        "callbacks": [tracer]
-    }
-    
-    # Run the trade validator node in the graph
-    state_result = await agent_graph.ainvoke(initial_state, config)
-    
-    return state_result.get("validation_result") or {
-        "allowed": False,
-        "warnings": ["Trade validation failed to produce a result."],
-        "new_portfolio_weight": 0.0
-    }
+    return await review_trade(
+        payload.proposed_trade.model_dump(), [h.model_dump(mode="json") for h in payload.portfolio],
+    )

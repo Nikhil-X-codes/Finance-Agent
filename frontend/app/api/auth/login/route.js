@@ -24,7 +24,7 @@ export async function POST(request) {
     const { email, password } = parsed.data;
 
     // Look up user by email
-    const user = getUserByEmail(email);
+    const user = await getUserByEmail(email);
     if (!user) {
       return NextResponse.json(
         { error: "INVALID_CREDENTIALS", message: "Invalid email or password" },

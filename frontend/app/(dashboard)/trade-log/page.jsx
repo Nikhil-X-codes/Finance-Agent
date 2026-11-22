@@ -50,21 +50,23 @@ export default function TradeLogPage() {
     },
   });
 
-  const fetchTrades = useCallback(async () => {
+  const fetchTrades = useCallback(async (signal) => {
     try {
-      const res = await fetch("/api/trades");
+      const res = await fetch("/api/trades", { signal });
       if (!res.ok) throw new Error("Failed to fetch trades");
       const data = await res.json();
-      setTrades(data.trades || []);
+      if (!signal.aborted) setTrades(data.trades || []);
     } catch (err) {
-      setError(err.message);
+      if (!signal.aborted) setError(err.message);
     } finally {
-      setLoading(false);
+      if (!signal.aborted) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchTrades();
+    const controller = new AbortController();
+    fetchTrades(controller.signal);
+    return () => controller.abort();
   }, [fetchTrades]);
 
   const onSubmitForm = (data) => {
@@ -128,7 +130,7 @@ export default function TradeLogPage() {
         <CardHeader>
           <CardTitle className="text-base">Add Trade</CardTitle>
           <CardDescription>
-            Enter trade details. Ticker is validated against known NSE symbols.
+            Enter the NSE ticker exactly as it appears on your trade confirmation.
           </CardDescription>
         </CardHeader>
         <CardContent>

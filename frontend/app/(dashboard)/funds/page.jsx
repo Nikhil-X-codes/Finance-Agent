@@ -1,11 +1,13 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getFundCategories, getFundComparison } from "@/lib/api";
+
+const inr = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 4 });
 
 export default function FundsPage() {
   const [categories, setCategories] = useState([]);
@@ -15,6 +17,8 @@ export default function FundsPage() {
   const [categoriesLoading, setCategoriesLoading] = useState(true);
   const [error, setError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [categoryAttempt, setCategoryAttempt] = useState(0);
+  const activeComparison = useRef(null);
 
   // Sorting state
   const [sortField, setSortField] = useState("1Y"); // default sort by 1Y CAGR
@@ -22,10 +26,13 @@ export default function FundsPage() {
 
   // Fetch categories on mount
   useEffect(() => {
+    const controller = new AbortController();
     const fetchCategories = async () => {
       setCategoriesLoading(true);
+      setError(null);
       try {
-        const json = await getFundCategories();
+        const json = await getFundCategories(controller.signal);
+        if (controller.signal.aborted) return;
         const cats = json.categories || [];
         setCategories(cats);
         
@@ -36,44 +43,44 @@ export default function FundsPage() {
           } else {
             setActiveCategory(cats[0]);
           }
+        } else {
+          setLoading(false);
         }
       } catch (err) {
-        console.error("Error fetching categories:", err);
-        setError(err.message);
+        if (!controller.signal.aborted) {
+          setLoading(false);
+          setError(err.message);
+        }
       } finally {
-        setCategoriesLoading(false);
+        if (!controller.signal.aborted) setCategoriesLoading(false);
       }
     };
     fetchCategories();
-  }, []);
+    return () => controller.abort();
+  }, [categoryAttempt]);
 
   const fetchComparison = useCallback(async (category, forceRefresh = false) => {
+    activeComparison.current?.abort();
+    const controller = new AbortController();
+    activeComparison.current = controller;
+    setRefreshing(forceRefresh);
     if (forceRefresh) {
-      setRefreshing(true);
+      setLoading(false);
     } else {
       setLoading(true);
+      setData(null);
     }
     setError(null);
     try {
-      const json = await getFundComparison(category, forceRefresh);
-      
-      // Map pe and expenseRatio to match the UI expectation
-      if (json.funds && Array.isArray(json.funds)) {
-        json.funds = json.funds.map(fund => ({
-          ...fund,
-          valuation: {
-            pe: fund.others?.pe
-          },
-          expenseRatio: fund.others?.ter
-        }));
-      }
-      
-      setData(json);
+      const json = await getFundComparison(category, forceRefresh, controller.signal);
+      if (!controller.signal.aborted) setData(json);
     } catch (err) {
-      setError(err.message);
+      if (!controller.signal.aborted) setError(err.message);
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (!controller.signal.aborted) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, []);
 
@@ -81,11 +88,14 @@ export default function FundsPage() {
     if (activeCategory) {
       fetchComparison(activeCategory);
     }
+    return () => activeComparison.current?.abort();
   }, [activeCategory, fetchComparison]);
 
   const handleRefresh = () => {
     if (activeCategory) {
       fetchComparison(activeCategory, true);
+    } else {
+      setCategoryAttempt((count) => count + 1);
     }
   };
 
@@ -181,7 +191,7 @@ export default function FundsPage() {
             variant="outline"
             size="sm"
             onClick={handleRefresh}
-            disabled={loading || refreshing || !activeCategory}
+            disabled={categoriesLoading || loading || refreshing}
             className="border-slate-800 bg-slate-900 text-slate-300 hover:bg-slate-800 hover:text-slate-50"
           >
             {refreshing ? (
@@ -252,7 +262,7 @@ export default function FundsPage() {
           <CardHeader className="border-b border-slate-800/80 pb-4">
             <CardTitle className="text-lg font-medium text-slate-100">{activeCategory} Comparison</CardTitle>
             <CardDescription className="text-slate-400">
-              Comparing {sortedFunds.length} funds under the {activeCategory} category. Click headers to sort.
+              {sortedFunds.length} schemes{data.source ? ` · Source: ${data.source}` : ""}. A dash indicates a metric the feed did not provide.
             </CardDescription>
           </CardHeader>
           <CardContent className="p-0">
@@ -262,6 +272,7 @@ export default function FundsPage() {
                   <TableRow className="border-slate-800/80 hover:bg-transparent">
                     <TableHead className="w-[180px] text-slate-300 font-semibold">AMC</TableHead>
                     <TableHead className="min-w-[220px] text-slate-300 font-semibold">Fund Name</TableHead>
+                    <TableHead className="min-w-[115px] text-right text-slate-300 font-semibold">Latest NAV</TableHead>
                     <TableHead
                       className="text-right text-slate-300 font-semibold cursor-pointer hover:text-sky-400 transition-colors"
                       onClick={() => handleSort("1Y")}
@@ -295,8 +306,15 @@ export default function FundsPage() {
                 <TableBody>
                   {sortedFunds.map((fund, idx) => (
                     <TableRow key={fund.schemeCode || idx} className="border-slate-800/60 hover:bg-slate-800/20">
-                      <TableCell className="font-semibold text-slate-300">{fund.amc}</TableCell>
-                      <TableCell className="text-slate-400">{fund.schemeName}</TableCell>
+                      <TableCell className="font-semibold text-slate-300">{fund.amc || "—"}</TableCell>
+                      <TableCell className="text-slate-200">
+                        {fund.schemeName}
+                        {(fund.plan || fund.option) && <span className="block text-xs text-slate-400">{[fund.plan, fund.option].filter(Boolean).join(" · ")}</span>}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {fund.nav != null && Number.isFinite(Number(fund.nav)) ? inr.format(Number(fund.nav)) : "—"}
+                        {fund.navDate && <span className="block whitespace-nowrap text-xs text-slate-400">{fund.navDate}</span>}
+                      </TableCell>
                       {renderCagrCell(fund.cagr?.["1Y"])}
                       {renderCagrCell(fund.cagr?.["3Y"])}
                       {renderCagrCell(fund.cagr?.["5Y"])}

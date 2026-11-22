@@ -1,212 +1,158 @@
-"""FastAPI routes for Mutual Fund category comparison."""
-
-from __future__ import annotations
+"""Compare category-matched funds using FinAPI data."""
 
 import asyncio
-from datetime import datetime
 import logging
+import re
 from typing import Any
+
 import httpx
 from fastapi import APIRouter, HTTPException, Query
 
-from ...config.settings import settings
-from ...services.cache_service import cache_service
+from src.config.settings import settings
+from src.services.cache_service import cache_service
 
 logger = logging.getLogger(__name__)
-
 router = APIRouter()
-
-FINAPI_BASE = "https://finapi.upvaly.com"
-CACHE_TTL = 3600  # 1 hour cache for live fund details and lists
-
+FINAPI_BASE = "https://finapi.upvaly.com/api/mf"
+SOURCE = "FinAPI"
+CACHE_TTL = 3600
 CATEGORIES = [
     "Contra", "Dividend Yield", "ELSS", "Flexi Cap", "Focused",
     "Large & Mid Cap", "Large Cap", "Mid Cap", "Multi Cap",
-    "Sectoral/Thematic", "Small Cap", "Value"
+    "Sectoral/Thematic", "Small Cap", "Value",
 ]
+BASIC_FIELDS = "schemeCode,schemeName,schemeCategoryLabel,fundHouse,planName,optionName,latestNav,latestNavDate"
+DETAIL_FIELDS = BASIC_FIELDS + ",cagr,riskMetrics,fundamentals,expenseRatio,rollingReturns"
 
 
 @router.get("/mf/categories")
 async def get_categories() -> dict[str, list[str]]:
-    """Return available MF categories for navigation tabs."""
     return {"categories": CATEGORIES}
 
 
-async def _fetch_fund_detail(client: httpx.AsyncClient, scheme_code: str) -> dict[str, Any]:
-    """Fetch details for a specific scheme code with caching."""
-    cache_key = f"FINAPI_UPVALY_SCHEME:{scheme_code}"
-    
+def _matches_category(fund: dict, category: str) -> bool:
+    label = fund.get("schemeCategoryLabel") or fund.get("schemeCategory") or ""
+    words = " ".join(re.findall(r"[a-z0-9]+", str(label).lower()))
+    if category == "Sectoral/Thematic":
+        return "sectoral" in words or "thematic" in words
+    category_words = " ".join(re.findall(r"[a-z0-9]+", category.lower()))
+    return f" {category_words} " in f" {words} "
+
+
+async def _read(client: httpx.AsyncClient, path: str, params: dict) -> Any:
+    response = await client.get(f"{FINAPI_BASE}/{path}", params=params)
+    response.raise_for_status()
+    return response.json()["data"]
+
+
+async def _fetch_fund_detail(client: httpx.AsyncClient, scheme_code: str, refresh: bool) -> dict:
+    key = f"FINAPI_UPVALY_SCHEME:{scheme_code}"
+
     async def fetch():
-        url = f"{FINAPI_BASE}/api/mf/scheme-code/{scheme_code}"
-        params = {
-            "fields": "schemeName,fundHouse,cagr,riskMetrics,fundamentals,expenseRatio,rollingReturns"
-        }
-        res = await client.get(url, params=params, timeout=10.0)
-        res.raise_for_status()
-        return res.json().get("data", {})
+        detail = await _read(client, f"scheme-code/{scheme_code}", {"fields": DETAIL_FIELDS})
+        if not isinstance(detail, dict):
+            raise ValueError("FinAPI returned invalid fund details")
+        return detail
 
-    try:
-        # Use cache_service to load/store detailed data
-        cached_result = await cache_service.get_or_fetch(
-            cache_key=cache_key,
-            ttl_seconds=CACHE_TTL,
-            fetcher=fetch,
-            source="FINAPI_UPVALY"
-        )
-        return cached_result.value
-    except Exception as e:
-        logger.warning(f"Failed to fetch detail for {scheme_code}: {e}")
-        return {}
+    if refresh:
+        detail = await fetch()
+        await cache_service.set(key, detail, CACHE_TTL, source=SOURCE)
+        return detail
+    return (await cache_service.get_or_fetch(key, CACHE_TTL, fetch, source=SOURCE)).value
 
 
-@router.get("/mf/comparison/{category}")
-async def get_mf_comparison(
-    category: str,
-    refresh: bool = Query(default=False, description="Bypass cache and force refresh")
-) -> dict[str, Any]:
-    """Dynamic MF comparison by category.
-    
-    Fetches matching funds from FinAPI and returns enriched comparison data.
-    """
-    if category not in CATEGORIES:
-        raise HTTPException(status_code=422, detail=f"Invalid category. Available: {CATEGORIES}")
+def _fund_row(fund: dict, detail: dict) -> dict:
+    fund = {**fund, **{field: value for field, value in detail.items() if value is not None}}
+    rolling = {
+        str(item.get("timeframe") or "").upper(): item.get("averageReturn")
+        for item in fund.get("rollingReturns") or [] if isinstance(item, dict)
+    }
+    cagr = fund["cagr"] if isinstance(fund.get("cagr"), dict) else {}
+    risk = fund["riskMetrics"] if isinstance(fund.get("riskMetrics"), dict) else {}
+    fundamentals = fund["fundamentals"] if isinstance(fund.get("fundamentals"), dict) else {}
 
-    cache_key = f"FINAPI_UPVALY_CATEGORY_LIST:{category}"
-
-    async def fetch_category_funds():
-        async with httpx.AsyncClient(follow_redirects=True) as client:
-            url = f"{FINAPI_BASE}/api/mf/search"
-            # Fuzzy search using category name
-            params = {
-                "schemeName": category,
-                "fields": "schemeCode,schemeName,fundHouse,schemeCategory"
-            }
-            res = await client.get(url, params=params, timeout=15.0)
-            res.raise_for_status()
-            return res.json().get("data", [])
-
-    try:
-        if refresh:
-            # If force-refresh is requested, fetch directly and update cache
-            funds = await fetch_category_funds()
-            cache_service.set(cache_key, funds, CACHE_TTL, source="FINAPI_UPVALY")
-        else:
-            cached_list = await cache_service.get_or_fetch(
-                cache_key=cache_key,
-                ttl_seconds=CACHE_TTL,
-                fetcher=fetch_category_funds,
-                source="FINAPI_UPVALY"
-            )
-            funds = cached_list.value
-    except Exception as e:
-        logger.error(f"Error fetching fund search results: {e}")
-        raise HTTPException(
-            status_code=502,
-            detail=f"FinAPI comparison service unavailable: {str(e)}"
-        )
-
-    # Filter to only keep schemes matching the category name (to avoid broad fuzzy search noise)
-    matched_funds = []
-    category_lower = category.lower()
-    for fund in funds:
-        scheme_cat = str(fund.get("schemeCategory") or "").lower()
-        # If it doesn't match the category or name, we check if it is part of it.
-        # Sectoral/Thematic category names might be like "Equity - Sectoral / Thematic" or similar.
-        if (category_lower in scheme_cat) or (category_lower == "sectoral/thematic" and "sector" in scheme_cat or "thematic" in scheme_cat):
-            matched_funds.append(fund)
-            
-    # Fallback: if search by schemeCategory is too strict or empty, fall back to first 10 funds in search response
-    if not matched_funds:
-        matched_funds = funds[:15]
-
-    # Limit total parallel requests to prevent overloading the FinAPI
-    matched_funds = matched_funds[:12]
-
-    # Step 2: Fetch detailed data in parallel
-    enriched_funds = []
-    async with httpx.AsyncClient(follow_redirects=True) as client:
-        tasks = []
-        for fund in matched_funds:
-            # If refresh is requested, we also invalidate the individual fund cache
-            scheme_code = fund.get("schemeCode")
-            if not scheme_code:
-                continue
-            
-            if refresh:
-                # We can't easily tell get_or_fetch to bypass, but we can delete or fetch directly.
-                # Let's fetch directly to update.
-                async def fetch_direct(code=scheme_code):
-                    url = f"{FINAPI_BASE}/api/mf/scheme-code/{code}"
-                    params = {
-                        "fields": "schemeName,fundHouse,cagr,riskMetrics,fundamentals,expenseRatio,rollingReturns"
-                    }
-                    res = await client.get(url, params=params, timeout=10.0)
-                    res.raise_for_status()
-                    data = res.json().get("data", {})
-                    cache_service.set(f"FINAPI_UPVALY_SCHEME:{code}", data, CACHE_TTL, source="FINAPI_UPVALY")
-                    return data
-                tasks.append(fetch_direct())
-            else:
-                tasks.append(_fetch_fund_detail(client, str(scheme_code)))
-        
-        details = await asyncio.gather(*tasks, return_exceptions=True)
-
-        for fund, detail in zip(matched_funds, details):
-            if isinstance(detail, Exception) or not detail:
-                continue
-
-            # Extract rolling returns array
-            rolling_list = detail.get("rollingReturns", []) or []
-            rolling = {
-                str(r.get("timeframe") or "").upper(): r
-                for r in rolling_list if isinstance(r, dict)
-            }
-
-            risk = detail.get("riskMetrics", {}) or {}
-
-            # Extracted risk metric resolver
-            def get_latest_risk(metric_name: str) -> float | None:
-                m_data = risk.get(metric_name) or {}
-                timeframes = m_data.get("timeframes") or []
-                if timeframes and isinstance(timeframes, list):
-                    val = timeframes[0].get("value")
-                    try:
-                        return float(val) if val is not None else None
-                    except (ValueError, TypeError):
-                        return None
-                return None
-
-            # Get CAGR fields safely
-            cagr = detail.get("cagr", {}) or {}
-
-            enriched_funds.append({
-                "amc": detail.get("fundHouse") or fund.get("fundHouse") or "Unknown",
-                "schemeName": detail.get("schemeName") or fund.get("schemeName") or "Unknown",
-                "schemeCode": fund.get("schemeCode"),
-                "rollingReturns": {
-                    "1Y": rolling.get("1Y", {}).get("averageReturn"),
-                    "3Y": rolling.get("3Y", {}).get("averageReturn"),
-                    "5Y": rolling.get("5Y", {}).get("averageReturn")
-                },
-                "cagr": {
-                    "1Y": cagr.get("1y"),
-                    "3Y": cagr.get("3y"),
-                    "5Y": cagr.get("5y")
-                },
-                "risk": {
-                    "volatility": get_latest_risk("riskStandardDeviation"),
-                    "sharpe": get_latest_risk("sharpRatio"),
-                    "sortino": get_latest_risk("sortinoRatio")
-                },
-                "others": {
-                    "pe": detail.get("fundamentals", {}).get("pe") if isinstance(detail.get("fundamentals"), dict) else None,
-                    "ter": detail.get("expenseRatio")
-                }
-            })
+    def risk_value(key):
+        metric = risk.get(key)
+        windows = metric.get("timeframes") if isinstance(metric, dict) else None
+        return windows[0].get("value") if isinstance(windows, list) and windows and isinstance(windows[0], dict) else None
 
     return {
-        "category": category,
-        "dataAsOf": datetime.now().strftime("%Y-%m-%d"),
-        "fundCount": len(enriched_funds),
-        "funds": enriched_funds
+        "amc": fund.get("fundHouse"),
+        "schemeName": fund["schemeName"],
+        "schemeCode": fund["schemeCode"],
+        "plan": fund.get("planName"),
+        "option": fund.get("optionName"),
+        "nav": fund.get("latestNav"),
+        "navDate": fund.get("latestNavDate"),
+        "rollingReturns": {period: rolling.get(period) for period in ("1Y", "3Y", "5Y")},
+        "cagr": {period: cagr.get(period) if period in cagr else cagr.get(period.lower()) for period in ("1Y", "3Y", "5Y")},
+        "risk": {
+            "volatility": risk_value("riskStandardDeviation"),
+            "sharpe": risk_value("sharpRatio"),
+            "sortino": risk_value("sortinoRatio"),
+        },
+        "others": {"pe": fundamentals.get("pe"), "ter": fund.get("expenseRatio")},
     }
+
+
+@router.get("/mf/comparison/{category:path}")
+async def get_mf_comparison(
+    category: str, refresh: bool = Query(default=False),
+) -> dict[str, Any]:
+    if category not in CATEGORIES:
+        raise HTTPException(422, "Invalid fund category.")
+
+    headers = {"X-API-Key": settings.finapi_upvaly_api_key} if settings.finapi_upvaly_api_key else {}
+    async with httpx.AsyncClient(headers=headers, timeout=12, follow_redirects=True) as client:
+        async def search_by_name(term: str) -> list:
+            # FinAPI searches by scheme name and supplies the authoritative category label.
+            data = await _read(client, "search", {"schemeName": term, "fields": BASIC_FIELDS})
+            if not isinstance(data, list):
+                raise ValueError("FinAPI returned invalid fund search results")
+            return data
+
+        async def search() -> list:
+            if category != "Sectoral/Thematic":
+                return await search_by_name(category)
+            batches = await asyncio.gather(
+                *(search_by_name(term) for term in ("Infrastructure", "Technology", "Pharma")),
+                return_exceptions=True,
+            )
+            successful = [batch for batch in batches if isinstance(batch, list)]
+            if not successful:
+                raise ValueError("FinAPI sectoral fund search failed.")
+            # Interleave search results so one sector cannot fill the entire comparison.
+            return [
+                batch[index]
+                for index in range(max(map(len, successful), default=0))
+                for batch in successful if index < len(batch)
+            ]
+
+        key = f"FINAPI_UPVALY_CATEGORY_LIST:v2:{category}"
+        try:
+            if refresh:
+                funds = await search()
+                await cache_service.set(key, funds, CACHE_TTL, source=SOURCE)
+            else:
+                cached = await cache_service.get_or_fetch(key, CACHE_TTL, search, source=SOURCE)
+                funds = cached.value
+        except Exception as exc:
+            logger.warning("Fund search failed for %s: %s", category, type(exc).__name__)
+            raise HTTPException(502, "Fund data is temporarily unavailable.") from exc
+
+        matched_by_code = {
+            str(fund["schemeCode"]): fund for fund in funds
+            if isinstance(fund, dict) and str(fund.get("schemeCode", "")).isdigit()
+            and fund.get("schemeName") and _matches_category(fund, category)
+        }
+        matched = list(matched_by_code.values())[:12]
+        details = await asyncio.gather(
+            *(_fetch_fund_detail(client, str(fund["schemeCode"]), refresh) for fund in matched),
+            return_exceptions=True,
+        )
+        rows = [
+            _fund_row(fund, detail if isinstance(detail, dict) else {})
+            for fund, detail in zip(matched, details)
+        ]
+
+    return {"category": category, "source": SOURCE, "dataAsOf": None, "fundCount": len(rows), "funds": rows}

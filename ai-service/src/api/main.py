@@ -1,15 +1,21 @@
 """FastAPI application entrypoint."""
 
 from contextlib import asynccontextmanager
+import asyncio
 import os
 
 import psutil
 from fastapi import FastAPI
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
+from psycopg.rows import dict_row
+from psycopg_pool import AsyncConnectionPool
+
 from ..config.settings import settings
+from ..core.graph import create_report_graph
+from ..core.qa_graph import create_qa_graph
 from ..core.rate_limit import limiter
 from ..services.cache_service import cache_service
 from .routes import router
@@ -22,50 +28,34 @@ def _memory_mb() -> float:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    app.state.memory_mb = _memory_mb
+    if not settings.supabase_db_url:
+        raise RuntimeError("Configure SUPABASE_DB_URL before starting the AI service")
 
-    print("=" * 60)
-    print("STARTUP: Loading all models eagerly...")
-    print("=" * 60)
+    if os.name == "nt" and not isinstance(asyncio.get_running_loop(), asyncio.SelectorEventLoop):
+        raise RuntimeError("On Windows, start Uvicorn with --loop asyncio:SelectorEventLoop")
 
-    # 1. Initialize Cache
-    try:
-        cache_service.initialize(settings.sqlite_path)
-        print("Cache initialized")
-    except Exception as e:
-        print(f"Cache init failed: {e}")
+    async def configure(conn):
+        await conn.execute("SET search_path TO finance_agent")
 
-    # 2. Eager load LLMService
-    print("\n[1/2] Loading Groq LLM...")
-    try:
-        from ..services.llm_service import LLMService
-        llm = LLMService.get_instance()
-        print(f"LLMService initialized with model: {llm.model}")
-    except Exception as e:
-        print(f"LLMService failed: {e}")
-        print("Server starting without initialized LLMService.")
+    async with AsyncConnectionPool(
+        settings.supabase_db_url,
+        kwargs={"autocommit": True, "row_factory": dict_row},
+        configure=configure,
+        min_size=1,
+        max_size=5,
+        timeout=8,
+        open=False,
+    ) as pool:
+        async with pool.connection() as conn:
+            await conn.execute("SELECT 1 FROM finance_agent.api_cache LIMIT 0")
 
-    # 3. Eager load EmbeddingService (SentenceTransformer)
-    print("\n[2/2] Loading SentenceTransformer Embeddings...")
-    try:
-        from ..services.embedding_service import get_embedding_service
-        get_embedding_service(
-            model_name=settings.embedding_model_name,
-            cache_folder=settings.embedding_cache_folder
-        )
-        print("SentenceTransformer Embeddings loaded successfully!")
-    except Exception as e:
-        print(f"EmbeddingService failed to load: {e}")
-        print("Server starting without pre-loaded EmbeddingService.")
-
-
-
-    print("\n" + "=" * 60)
-    print("ALL MODELS LOADED — Server ready for requests")
-    print("=" * 60)
-
-    yield
-
+        cache_service.initialize(pool)
+        app.state.report_graph = create_report_graph()
+        app.state.qa_graph = create_qa_graph()
+        try:
+            yield
+        finally:
+            cache_service.shutdown()
 
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -86,6 +76,38 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(router)
+
+
+@app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
+async def api_home() -> HTMLResponse:
+    return HTMLResponse(
+        """<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Finance Agent API</title>
+  <style>
+    body { color-scheme: dark; background: #020617; color: #f8fafc; font: 1rem/1.6 system-ui; margin: 0; }
+    main { max-width: 38rem; margin: 12vh auto; padding: 0 1.5rem; }
+    a { color: #7dd3fc; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Finance Agent API</h1>
+    <p>This port runs the backend. If you are running the app locally, use the frontend on port 3000.</p>
+    <p><a href="http://localhost:3000">Open the Finance Agent website</a></p>
+    <p><a href="/health">Check backend health</a></p>
+  </main>
+</body>
+</html>"""
+    )
+
+
+@app.api_route("/favicon.ico", methods=["GET", "HEAD"], include_in_schema=False)
+async def api_favicon() -> Response:
+    return Response(status_code=204)
 
 
 @app.api_route("/health", methods=["GET", "HEAD"])

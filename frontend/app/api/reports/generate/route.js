@@ -1,51 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
-import { getLastSnapshot, getTradesSinceDate, createReport } from "@/lib/db";
-
-function applyTradesToSnapshot(snapshotHoldings, trades) {
-  const holdingsMap = new Map();
-  for (const h of snapshotHoldings) {
-    holdingsMap.set(h.ticker, { ...h, status: h.status || "UNREALIZED" });
-  }
-
-  for (const trade of trades) {
-    const ticker = trade.ticker;
-    const existing = holdingsMap.get(ticker);
-
-    if (trade.transaction_type === "BUY") {
-      if (existing) {
-        const totalCost =
-          existing.avgBuyPrice * existing.quantity + trade.price * trade.quantity;
-        const totalQty = existing.quantity + trade.quantity;
-        existing.quantity = totalQty;
-        existing.avgBuyPrice = totalQty > 0 ? totalCost / totalQty : 0;
-        existing.status = "UNREALIZED";
-      } else {
-        holdingsMap.set(ticker, {
-          ticker,
-          name: "",
-          isin: "",
-          quantity: trade.quantity,
-          avgBuyPrice: trade.price,
-          assetType: "STOCK",
-          sector: "",
-          status: "UNREALIZED",
-        });
-      }
-    } else if (trade.transaction_type === "SELL") {
-      if (existing) {
-        existing.quantity = Math.max(0, existing.quantity - trade.quantity);
-        if (existing.quantity === 0) {
-          existing.status = "REALIZED";
-          existing.sellPrice = trade.price;
-          existing.realizedPnl = (trade.price - existing.avgBuyPrice) * trade.quantity;
-        }
-      }
-    }
-  }
-
-  return Array.from(holdingsMap.values());
-}
+import { createReport, getPortfolio } from "@/lib/db";
+import { toAiHoldings } from "@/lib/portfolio";
 
 export async function POST(request) {
   try {
@@ -57,31 +13,15 @@ export async function POST(request) {
       );
     }
 
-    const snapshot = getLastSnapshot(session.userId);
-    if (!snapshot) {
+    const { snapshot, holdings, tradeHistory, tradesMergedCount } = await getPortfolio(session.userId);
+    if (!snapshot && !tradesMergedCount) {
       return NextResponse.json(
-        { error: "No portfolio found. Upload a statement to get started.", code: "NO_PORTFOLIO" },
+        { error: "No portfolio found. Upload a statement or record a trade.", code: "NO_PORTFOLIO" },
         { status: 404 }
       );
     }
 
-    const trades = getTradesSinceDate(session.userId, snapshot.created_at);
-    const mergedHoldings = applyTradesToSnapshot(snapshot.holdings_json, trades);
-
-    // Map merged holdings to format expected by FastAPI's Holding model
-    const formattedHoldings = mergedHoldings.map((h) => ({
-      isin: h.isin || "INE000000000",
-      ticker: h.ticker || "",
-      name: h.name || h.ticker || "",
-      quantity: Number(h.quantity),
-      avg_buy_price: Number(h.avgBuyPrice),
-      asset_type: h.assetType === "MUTUAL_FUND" ? "MUTUAL_FUND" : "STOCK",
-      sector: h.sector || "Other",
-      status: h.status || (h.quantity === 0 ? "REALIZED" : "UNREALIZED"),
-      current_price: h.currentPrice || h.avgBuyPrice,
-      sell_price: h.sellPrice || 0.0,
-      realized_pnl: h.realizedPnl || 0.0
-    }));
+    const formattedHoldings = toAiHoldings([...holdings, ...tradeHistory]);
 
     const reqBody = await request.json().catch(() => ({}));
     const includeNews = reqBody.includeNews !== false;
@@ -148,20 +88,18 @@ export async function POST(request) {
                 }
               }
 
-              if (eventName === "complete" && dataStr) {
+              if (eventName === "complete") {
                 try {
                   const completeData = JSON.parse(dataStr);
                   const reportJson = completeData.report_json;
-                  if (reportJson) {
-                    createReport(
-                      session.userId,
-                      snapshot.id,
-                      reportJson,
-                      completeData.generatedVia || "LLM"
-                    );
-                  }
-                } catch (err) {
-                  console.error("Error saving report to DB:", err);
+                  if (!reportJson?.id) throw new Error("Report result did not include an ID");
+                  await createReport(session.userId, snapshot?.id ?? null, reportJson, completeData.generatedVia || "LLM");
+                } catch (error) {
+                  console.error("Report persistence failed", error.code || error.name);
+                  controller.enqueue(encoder.encode('event: error\ndata: {"error":"Report could not be saved.","code":"SAVE_FAILED"}\n\n'));
+                  controller.close();
+                  await reader.cancel();
+                  return;
                 }
               }
 

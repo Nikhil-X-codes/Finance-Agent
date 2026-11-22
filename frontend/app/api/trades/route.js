@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSession } from "@/lib/auth";
-import { getTradesByUser, createTrade } from "@/lib/db";
+import { getTradesByUser, createTrade, PortfolioConflict } from "@/lib/db";
+import { dateSchema, marketDate } from "@/lib/statements";
 import fs from "fs";
 import path from "path";
 
@@ -19,10 +20,12 @@ try {
 const tradeSchema = z.object({
   ticker: z.string().min(1, "Ticker is required").transform((v) => v.toUpperCase()),
   transactionType: z.enum(["BUY", "SELL"], { required_error: "Must be BUY or SELL" }),
-  quantity: z.number(),
-  price: z.number(),
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD"),
+  quantity: z.number().finite().min(0.00000001),
+  price: z.number().finite().positive(),
+  date: dateSchema,
 });
+
+export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
@@ -34,7 +37,7 @@ export async function GET() {
       );
     }
 
-    const trades = getTradesByUser(session.userId);
+    const trades = await getTradesByUser(session.userId);
 
     return NextResponse.json({
       trades: trades.map((t) => ({
@@ -104,19 +107,14 @@ export async function POST(request) {
     }
 
     // Validate date is not in the future
-    const today = new Date();
-    const yyyy = today.getFullYear();
-    const mm = String(today.getMonth() + 1).padStart(2, "0");
-    const dd = String(today.getDate()).padStart(2, "0");
-    const todayStr = `${yyyy}-${mm}-${dd}`;
-    if (date > todayStr) {
+    if (date > marketDate()) {
       return NextResponse.json(
         { error: "Trade date cannot be in the future", code: "FUTURE_DATE" },
         { status: 422 }
       );
     }
 
-    const trade = createTrade(session.userId, ticker, transactionType, quantity, price, date);
+    const trade = await createTrade(session.userId, ticker, transactionType, quantity, price, date);
 
     return NextResponse.json(
       {
@@ -131,6 +129,9 @@ export async function POST(request) {
       { status: 201 }
     );
   } catch (error) {
+    if (error instanceof PortfolioConflict) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: 409 });
+    }
     console.error("Create trade error:", error);
     return NextResponse.json(
       { error: "Failed to create trade", code: "INTERNAL_ERROR" },

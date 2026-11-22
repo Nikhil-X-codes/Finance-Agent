@@ -1,171 +1,43 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
-import { getLastSnapshot, getTradesSinceDate } from "@/lib/db";
+import { getPortfolio } from "@/lib/db";
+import { toAiHoldings } from "@/lib/portfolio";
 
-/**
- * Merge trade deltas into a snapshot to produce the current portfolio.
- * BUY  → increases quantity, recalculates weighted avg price
- * SELL → decreases quantity (avg price unchanged)
- * Holdings with quantity ≤ 0 are removed.
- */
-function applyTradesToSnapshot(snapshotHoldings, trades) {
-  // Build a map keyed by ticker for O(1) lookups of active holdings only
-  const holdingsMap = new Map();
-  const activeHoldings = (snapshotHoldings || []).filter(
-    (h) => h.status !== "REALIZED" && h.quantity > 0
-  );
-  for (const h of activeHoldings) {
-    holdingsMap.set(h.ticker, { ...h });
-  }
-
-  for (const trade of trades) {
-    const ticker = trade.ticker;
-    const existing = holdingsMap.get(ticker);
-
-    if (trade.transaction_type === "BUY") {
-      if (existing) {
-        // Weighted average price
-        const totalCost =
-          existing.avgBuyPrice * existing.quantity + trade.price * trade.quantity;
-        const totalQty = existing.quantity + trade.quantity;
-        existing.quantity = totalQty;
-        existing.avgBuyPrice = totalQty > 0 ? totalCost / totalQty : 0;
-      } else {
-        holdingsMap.set(ticker, {
-          ticker,
-          name: "",
-          isin: "",
-          quantity: trade.quantity,
-          avgBuyPrice: trade.price,
-          assetType: "STOCK",
-          sector: "",
-        });
-      }
-    } else if (trade.transaction_type === "SELL") {
-      if (existing) {
-        existing.quantity -= trade.quantity;
-      }
-      // If no existing holding, ignore the sell (edge case)
-    }
-  }
-
-  // Filter out zero/negative quantity holdings
-  return Array.from(holdingsMap.values()).filter((h) => h.quantity > 0);
-}
+export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
     const session = await getSession();
-    if (!session.userId) {
-      return NextResponse.json(
-        { error: "UNAUTHORIZED", code: "UNAUTHORIZED" },
-        { status: 401 }
-      );
+    if (!session.userId) return NextResponse.json({ error: "UNAUTHORIZED", code: "UNAUTHORIZED" }, { status: 401 });
+
+    const { snapshot, ...portfolio } = await getPortfolio(session.userId);
+    if (!snapshot && !portfolio.tradesMergedCount) {
+      return NextResponse.json({ error: "No portfolio found.", code: "NO_PORTFOLIO" }, { status: 404 });
     }
 
-    const snapshot = getLastSnapshot(session.userId);
-    if (!snapshot) {
-      return NextResponse.json(
-        { error: "No portfolio found. Upload a statement to get started.", code: "NO_PORTFOLIO" },
-        { status: 404 }
-      );
-    }
-
-    // Get trades created since the snapshot
-    const trades = getTradesSinceDate(session.userId, snapshot.created_at);
-
-    // Merge trades into snapshot (active holdings only)
-    const mergedHoldings = applyTradesToSnapshot(snapshot.holdings_json, trades);
-
-    // Extract realized trades from the snapshot
-    const tradeHistory = (snapshot.holdings_json || [])
-      .filter((h) => h.status === "REALIZED")
-      .map((t) => ({
-        ticker: t.ticker || "",
-        name: t.name || "",
-        quantity: t.quantity || 0,
-        avgBuyPrice: t.avgBuyPrice || 0,
-        sellPrice: t.sellPrice || 0,
-        realizedPnl: t.realizedPnl || 0,
-        buyDate: t.buyDate || "",
-        sellDate: t.sellDate || "",
-        status: "REALIZED",
-      }));
-
-    // Compute value-weighted sector allocation
-    const sectorAllocation = {};
-    let totalValue = 0;
-    for (const h of mergedHoldings) {
-      const val = Number(h.quantity || 0) * Number(h.avgBuyPrice || 0);
-      totalValue += val;
-      const sector = h.sector || "Other";
-      sectorAllocation[sector] = (sectorAllocation[sector] || 0) + val;
-    }
-    // Normalize to percentages (0 to 100)
-    for (const sector of Object.keys(sectorAllocation)) {
-      sectorAllocation[sector] = totalValue > 0
-        ? Math.round((sectorAllocation[sector] / totalValue) * 10000) / 100
-        : 0;
-    }
-
-    // Calculate realized P&L total
-    const realizedPnlTotal = tradeHistory.reduce((sum, t) => sum + (t.realizedPnl || 0), 0);
-
-    // Call FastAPI /portfolio/risk-status for dynamic risk analysis
     const baseUrl = process.env.FASTAPI_URL || "http://localhost:8000";
-    const internalKey = process.env.INTERNAL_API_KEY || "";
-    
-    const formattedHoldingsForRisk = mergedHoldings.map((h) => ({
-      isin: h.isin || "",
-      ticker: h.ticker || "",
-      name: h.name || "",
-      quantity: Number(h.quantity || 0),
-      avg_buy_price: Number(h.avgBuyPrice || 0),
-      asset_type: h.assetType || "STOCK",
-      sector: h.sector || "",
-      status: "UNREALIZED",
-      current_price: Number(h.currentPrice || h.avgBuyPrice || 0),
-    }));
-
-    let riskStatus = {
-      overall_risk: "MEDIUM",
-      reasoning: "Completed portfolio risk audit.",
-      flags: []
-    };
-
+    let riskStatus = { overall_risk: "UNAVAILABLE", reasoning: "Risk assessment is temporarily unavailable.", flags: [] };
     try {
-      const riskRes = await fetch(`${baseUrl}/portfolio/risk-status`, {
+      const response = await fetch(`${baseUrl}/portfolio/risk-status`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Internal-Key": internalKey,
-        },
-        body: JSON.stringify({ portfolio: formattedHoldingsForRisk }),
+        headers: { "Content-Type": "application/json", "X-Internal-Key": process.env.INTERNAL_API_KEY || "" },
+        body: JSON.stringify({ portfolio: toAiHoldings(portfolio.holdings) }),
+        signal: AbortSignal.timeout(5000),
       });
-
-      if (riskRes.ok) {
-        const riskData = await riskRes.json();
-        riskStatus = riskData;
-      }
-    } catch (riskErr) {
-      console.error("FastAPI risk-status check failed, falling back:", riskErr);
+      if (response.ok) riskStatus = await response.json();
+    } catch {
+      // Portfolio facts remain available during a provider outage.
     }
 
     return NextResponse.json({
-      snapshotId: snapshot.id,
-      snapshotDate: snapshot.created_at,
-      tradesMergedCount: trades.length,
-      holdings: mergedHoldings,
-      tradeHistory,
-      realizedPnlTotal,
-      sectorAllocation,
+      ...portfolio,
+      snapshotId: snapshot?.id ?? null,
+      snapshotDate: snapshot?.created_at ?? null,
+      coverageEnd: snapshot?.coverage_end ?? null,
       riskStatus,
     });
   } catch (error) {
-    console.error("Portfolio error:", error);
-    return NextResponse.json(
-      { error: "Failed to load portfolio", code: "INTERNAL_ERROR" },
-      { status: 500 }
-    );
+    console.error("Portfolio load failed", error.code || error.name);
+    return NextResponse.json({ error: "Failed to load portfolio", code: "INTERNAL_ERROR" }, { status: 500 });
   }
 }

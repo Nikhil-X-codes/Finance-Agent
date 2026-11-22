@@ -18,6 +18,8 @@ export default function PreviewPage() {
 
   const [holdings, setHoldings] = useState([]);
   const [tradeHistory, setTradeHistory] = useState([]);
+  const [coverageStart, setCoverageStart] = useState("");
+  const [coverageEnd, setCoverageEnd] = useState("");
   const [summary, setSummary] = useState(null);
   const [brokerDetected, setBrokerDetected] = useState("");
   const [parseConfidence, setParseConfidence] = useState(0);
@@ -34,6 +36,12 @@ export default function PreviewPage() {
     if (raw) {
       try {
         const data = JSON.parse(raw);
+        if (data.previewId !== previewId) {
+          setLoaded(true);
+          return;
+        }
+        setCoverageStart(data.coverageStart || "");
+        setCoverageEnd(data.coverageEnd || "");
         setHoldings(data.holdings || []);
         setTradeHistory(data.tradeHistory || []);
         setSummary(data.summary || null);
@@ -45,11 +53,11 @@ export default function PreviewPage() {
       }
     }
     setLoaded(true);
-  }, []);
+  }, [previewId]);
 
   const startEdit = (section, rowIndex, field, currentValue) => {
     setEditingCell({ section, rowIndex, field });
-    setEditValue(String(currentValue));
+    setEditValue(String(currentValue ?? ""));
   };
 
   const saveEdit = () => {
@@ -126,7 +134,7 @@ export default function PreviewPage() {
       const res = await fetch("/api/statements/confirm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ previewId: previewId || "manual", holdings: combined }),
+        body: JSON.stringify({ previewId, holdings: combined, coverageStart, coverageEnd }),
       });
 
       if (!res.ok) {
@@ -228,7 +236,7 @@ export default function PreviewPage() {
           <ul className="mt-2 space-y-1">
             {unrecognizedRows.map((row, i) => (
               <li key={i} className="text-xs text-amber-500/80">
-                Row {i+1}: {row.reason || "Error decoding row values"}
+                Row {row.row ?? i+1}: {row.reason || "Error decoding row values"}
               </li>
             ))}
           </ul>
@@ -288,7 +296,7 @@ export default function PreviewPage() {
                           />
                         ) : (
                           <span className="hover:text-sky-400 transition-colors">
-                            {isNumeric && ["avgBuyPrice", "currentPrice"].includes(field)
+                            {isNumeric && value != null && ["avgBuyPrice", "currentPrice"].includes(field)
                               ? `₹${Number(value).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`
                               : value ?? "—"}
                           </span>
@@ -317,6 +325,17 @@ export default function PreviewPage() {
       </Card>
 
       {/* Trade history table */}
+      <div className="flex flex-wrap gap-4">
+        <label className="text-sm">
+          Statement start date (optional)
+          <Input type="date" value={coverageStart} onChange={(event) => setCoverageStart(event.target.value)} />
+        </label>
+        <label className="text-sm">
+          Holdings as of
+          <Input type="date" value={coverageEnd} onChange={(event) => setCoverageEnd(event.target.value)} required />
+        </label>
+      </div>
+
       {tradeHistory.length > 0 && (
         <Card className="bg-slate-900/20 border-slate-800">
           <CardHeader>
@@ -370,7 +389,7 @@ export default function PreviewPage() {
                             />
                           ) : (
                             <span className={`hover:text-sky-400 transition-colors ${field === "realizedPnl" ? (value >= 0 ? "text-emerald-400" : "text-red-400") : ""}`}>
-                              {isNumeric && ["avgBuyPrice", "sellPrice", "realizedPnl"].includes(field)
+                              {isNumeric && value != null && ["avgBuyPrice", "sellPrice", "realizedPnl"].includes(field)
                                 ? `₹${Number(value).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`
                                 : value ?? "—"}
                             </span>
@@ -410,7 +429,7 @@ export default function PreviewPage() {
         <a href="/portfolio/upload">
           <Button variant="secondary">Cancel</Button>
         </a>
-        <Button onClick={handleConfirm} disabled={confirming || (!holdings.length && !tradeHistory.length)}>
+        <Button onClick={handleConfirm} disabled={confirming || !coverageEnd || (!holdings.length && !tradeHistory.length)}>
           {confirming ? "Saving..." : `Confirm Portfolio`}
         </Button>
       </div>

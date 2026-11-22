@@ -1,198 +1,154 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
 import { getPopularStocks, searchStocks } from "@/lib/api";
 
-export default function StocksPage() {
-  const [popularStocks, setPopularStocks] = useState([]);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [searchLoading, setSearchLoading] = useState(false);
-  const [searched, setSearched] = useState(false);
+const currency = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" });
+const timestamp = new Intl.DateTimeFormat("en-IN", {
+  dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Kolkata",
+});
+const quoteLabels = { delayed: "Delayed quote", last_published: "Last published quote", stale_cache: "Stale quote" };
+const control = "rounded-md border border-slate-700 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800 disabled:opacity-50";
 
-  // Load popular stocks on mount
+export default function StocksPage() {
+  const [popular, setPopular] = useState({ loading: true });
+  const [draft, setDraft] = useState("");
+  const [search, setSearch] = useState(null);
+  const activeSearch = useRef(null);
+
+  function loadPopular(signal) {
+    setPopular((previous) => ({ ...previous, loading: true, error: false }));
+    getPopularStocks(signal)
+      .then((data) => setPopular({ rows: data.stocks || [], loading: false, disabled: data.status === "disabled" }))
+      .catch(() => {
+        if (!signal?.aborted) setPopular((previous) => ({ ...previous, loading: false, error: true }));
+      });
+  }
+
   useEffect(() => {
-    fetchPopular();
+    const controller = new AbortController();
+    loadPopular(controller.signal);
+    return () => {
+      controller.abort();
+      activeSearch.current?.abort();
+    };
   }, []);
 
-  const fetchPopular = async () => {
-    setLoading(true);
-    try {
-      const data = await getPopularStocks();
-      setPopularStocks(data.stocks || []);
-    } catch (err) {
-      console.error("Failed to load popular stocks:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
+  async function submit(event) {
+    event.preventDefault();
+    const query = draft.trim();
+    if (!query) return;
+    activeSearch.current?.abort();
+    const controller = new AbortController();
+    activeSearch.current = controller;
+    setSearch({ query, loading: true });
 
-  const handleSearch = async (e) => {
-    e.preventDefault();
-    if (!searchQuery.trim()) return;
-
-    setSearchLoading(true);
-    setSearched(true);
     try {
-      const data = await searchStocks(searchQuery);
-      setSearchResults(data.results || []);
-    } catch (err) {
-      console.error("Search failed:", err);
-    } finally {
-      setSearchLoading(false);
+      const data = await searchStocks(query, controller.signal);
+      if (!controller.signal.aborted) {
+        setSearch({ query, rows: data.results || [], disabled: data.status === "disabled" });
+      }
+    } catch {
+      if (!controller.signal.aborted) setSearch({ query, error: true });
     }
-  };
+  }
+
+  function clearSearch() {
+    activeSearch.current?.abort();
+    setDraft("");
+    setSearch(null);
+  }
 
   return (
-    <div className="space-y-8">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-50">Stock Explorer</h1>
-        <p className="text-sm text-slate-400">
-          Search details, live quotes, and fundamental valuation metrics for Indian equities.
-        </p>
-      </div>
-
-      {/* Search Bar */}
-      <Card className="border-slate-800 bg-slate-900/30 backdrop-blur-sm">
-        <CardContent className="pt-6">
-          <form onSubmit={handleSearch} className="flex gap-3">
-            <Input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by name or symbol (e.g. RELIANCE, HDFC Bank, TCS)..."
-              className="flex-1 border-slate-800 bg-slate-950 text-slate-100 placeholder:text-slate-500"
-            />
-            <Button
-              type="submit"
-              disabled={searchLoading}
-              className="bg-slate-50 text-slate-900 hover:bg-slate-200"
-            >
-              {searchLoading ? "Searching..." : "Search"}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-
-      {/* Search Results */}
-      {searched && (
-        <div className="space-y-4">
-          <h2 className="text-lg font-medium text-slate-100">
-            Search Results {searchResults.length > 0 && `(${searchResults.length})`}
-          </h2>
-          {searchLoading ? (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {[...Array(3)].map((_, i) => (
-                <Skeleton key={i} className="h-36 w-full bg-slate-900/80 border border-slate-800/80 rounded-xl" />
-              ))}
-            </div>
-          ) : searchResults.length > 0 ? (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {searchResults.map((stock) => (
-                <StockCard key={stock.symbol} stock={stock} />
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-slate-500">No stocks found matching &quot;{searchQuery}&quot;.</p>
-          )}
+    <div className="space-y-7">
+      <h1 className="text-3xl font-semibold tracking-tight">Stocks</h1>
+      <form onSubmit={submit} className="max-w-xl space-y-2">
+        <label htmlFor="stock-query" className="block text-sm font-medium">NSE ticker</label>
+        <div className="flex gap-2">
+          <input id="stock-query" value={draft} maxLength={100} onChange={(event) => setDraft(event.target.value)} disabled={popular.disabled}
+            placeholder="e.g. TCS" className="min-w-0 flex-1 rounded-md border border-slate-700 bg-slate-900/40 px-3 py-2 text-sm" />
+          <button type="submit" disabled={popular.disabled || !draft.trim()} className="rounded-md bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-white disabled:opacity-50">Search</button>
         </div>
+      </form>
+
+      {search ? (
+        <section aria-labelledby="search-heading" className="space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <h2 id="search-heading" className="min-w-0 break-words text-lg font-semibold">Results for “{search.query}”</h2>
+            <button type="button" className={control + " shrink-0"} onClick={clearSearch}>Clear search</button>
+          </div>
+          {search.loading && <p role="status" className="text-sm text-slate-400">Searching…</p>}
+          {search.error && <p role="alert" className="text-sm text-amber-300">Search is temporarily unavailable. Try again.</p>}
+          {search.disabled && <p role="status" className="text-sm text-slate-400">Market data is disabled for this deployment.</p>}
+          {!search.disabled && search.rows?.length === 0 && <p role="status" className="text-sm text-slate-400">No matching NSE tickers.</p>}
+          {search.rows?.length > 0 && <StockTable stocks={search.rows} />}
+        </section>
+      ) : (
+        <section aria-labelledby="popular-heading" className="space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <h2 id="popular-heading" className="text-lg font-semibold">Market movers</h2>
+            <button type="button" className={control} onClick={() => loadPopular()} disabled={popular.loading}>Refresh</button>
+          </div>
+          {popular.loading && <p role="status" className="text-sm text-slate-400">Loading quotes…</p>}
+          {popular.error && <p role="alert" className="text-sm text-amber-300">{popular.rows?.length ? "Refresh failed. Showing the previously loaded quotes." : "Quotes could not be loaded."}</p>}
+          {["gainers", "losers"].map((direction) => {
+            const rows = popular.rows?.filter((stock) => stock.moverType === direction) || [];
+            return rows.length > 0 && (
+              <div key={direction} className="space-y-2">
+                <h3 className="text-sm font-medium text-slate-300">{direction === "gainers" ? "Top gainers" : "Top losers"}</h3>
+                <StockTable stocks={rows} />
+              </div>
+            );
+          })}
+          {popular.disabled && !popular.loading && <p role="status" className="text-sm text-slate-400">Market data is disabled for this deployment.</p>}
+          {!popular.disabled && popular.rows?.length === 0 && !popular.loading && !popular.error && <p className="text-sm text-slate-400">No market movers available.</p>}
+        </section>
       )}
-
-      {/* Popular Stocks */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-medium text-slate-100">Popular Equities</h2>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={fetchPopular}
-            className="text-xs text-sky-400 hover:text-sky-300 hover:bg-slate-900"
-          >
-            Refresh
-          </Button>
-        </div>
-
-        {loading ? (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-            {[...Array(5)].map((_, i) => (
-              <Skeleton key={i} className="h-36 w-full bg-slate-900/80 border border-slate-800/80 rounded-xl" />
-            ))}
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-            {popularStocks.map((stock) => (
-              <StockCard key={stock.symbol} stock={stock} />
-            ))}
-          </div>
-        )}
-      </div>
     </div>
   );
 }
 
-function StockCard({ stock }) {
-  if (stock.error) {
-    return (
-      <Card className="border-red-900/40 bg-red-950/10 p-4 rounded-xl flex flex-col justify-between h-36">
-        <div>
-          <h3 className="font-semibold text-red-400 text-lg font-mono">{stock.symbol}</h3>
-          <p className="text-xs text-red-500 mt-2">Unavailable</p>
-        </div>
-        <p className="text-[10px] text-red-900 truncate">{stock.error}</p>
-      </Card>
-    );
-  }
-
-  const isPositive = (stock.change || 0) >= 0;
-
-  const formatPrice = (p) =>
-    p !== null && p !== undefined
-      ? `₹${p.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`
-      : "—";
-
-  const formatPercent = (v) => {
-    if (v === null || v === undefined) return "—";
-    const sign = v >= 0 ? "+" : "";
-    return `${sign}${v.toFixed(2)}%`;
-  };
-
+function StockTable({ stocks }) {
   return (
-    <Link href={`/stocks/${stock.symbol}`}>
-      <Card className="border-slate-800 bg-slate-900/40 hover:bg-slate-800/30 hover:border-slate-700/80 transition-all cursor-pointer rounded-xl flex flex-col justify-between h-36 p-4">
-        {/* Header */}
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <h3 className="font-semibold text-slate-100 text-lg font-mono tracking-tight">{stock.symbol}</h3>
-            <p className="text-xs text-slate-400 truncate mt-0.5">{stock.name}</p>
-          </div>
-          {stock.sector && stock.sector.toLowerCase() !== "unknown" && (
-            <span className="text-[9px] font-medium px-2 py-0.5 bg-slate-950 text-slate-400 border border-slate-800 rounded-full shrink-0">
-              {stock.sector}
-            </span>
-          )}
-        </div>
+    <div className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-900/35" tabIndex={0} role="region" aria-label="Stock quotes">
+      <table className="w-full min-w-[32rem] text-left text-sm">
+        <thead className="border-b border-slate-800 text-xs text-slate-400">
+          <tr>
+            <th scope="col" className="px-4 py-3">Company</th>
+            <th scope="col" className="px-4 py-3 text-right">Price</th>
+            <th scope="col" className="px-4 py-3 text-right">Day change</th>
+            <th scope="col" className="px-4 py-3">Quote source · IST</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-800">
+          {stocks.map((stock) => {
+            const hasPrice = Number.isFinite(stock.price);
+            const hasChange = hasPrice && Number.isFinite(stock.changePercent);
+            const quoteLabel = quoteLabels[stock.quoteStatus] || (!stock.quoteStatus && stock.fresh === false ? "Stale quote" : null);
+            const sign = stock.changePercent > 0 ? "+" : "";
+            const changeClass = stock.changePercent > 0 ? "text-emerald-400" : stock.changePercent < 0 ? "text-rose-400" : "text-slate-400";
+            const publishedAt = stock.marketTimestamp && !Number.isNaN(Date.parse(stock.marketTimestamp))
+              ? timestamp.format(new Date(stock.marketTimestamp))
+              : "Timestamp unavailable";
 
-        {/* Pricing */}
-        <div className="my-2">
-          <p className="text-2xl font-bold text-slate-50 font-mono tracking-tight">
-            {formatPrice(stock.price)}
-          </p>
-          <p className={`text-xs font-mono font-medium ${isPositive ? "text-emerald-400" : "text-rose-400"}`}>
-            {isPositive ? "+" : ""}{stock.change?.toFixed(2) || "0.00"} ({formatPercent(stock.changePercent)})
-          </p>
-        </div>
-
-        {stock.matchType && (
-          <p className="text-[9px] text-slate-500 font-mono mt-1 text-right">{stock.matchType}</p>
-        )}
-      </Card>
-    </Link>
+            return (
+              <tr key={stock.symbol}>
+                <th scope="row" className="px-4 py-3 font-medium">
+                  <Link href={"/stocks/" + encodeURIComponent(stock.symbol)} className="text-sky-300 hover:underline">{stock.symbol}</Link>
+                  {stock.name && stock.name !== stock.symbol && <span className="mt-0.5 block text-xs font-normal text-slate-400">{stock.name}</span>}
+                </th>
+                <td className="px-4 text-right tabular-nums">{hasPrice ? currency.format(stock.price) : <span className="text-xs text-slate-400">Unavailable</span>}</td>
+                <td className={"px-4 text-right tabular-nums " + changeClass}>{hasChange ? sign + stock.changePercent.toFixed(2) + "%" : "—"}</td>
+                <td className="px-4 text-xs text-slate-400">
+                  {hasPrice ? <>{stock.source && <span className="block text-slate-300">{stock.source}</span>}
+                    {publishedAt}{quoteLabel && <span className="block text-slate-300">{quoteLabel}</span>}</> : "—"}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }

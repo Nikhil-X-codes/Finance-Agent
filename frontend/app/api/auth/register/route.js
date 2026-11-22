@@ -24,7 +24,7 @@ export async function POST(request) {
     const { email, password } = parsed.data;
 
     // Check if email already exists
-    const existing = getUserByEmail(email);
+    const existing = await getUserByEmail(email);
     if (existing) {
       return NextResponse.json(
         { error: "EMAIL_EXISTS", message: "An account with this email already exists" },
@@ -36,7 +36,14 @@ export async function POST(request) {
     const passwordHash = await bcrypt.hash(password, 10);
 
     // Create user
-    const user = createUser(email, passwordHash);
+    const user = await createUser(email, passwordHash);
+
+    if (!user) {
+      return NextResponse.json(
+        { error: "EMAIL_EXISTS", message: "An account with this email already exists" },
+        { status: 409 }
+      );
+    }
 
     // Set session cookie
     const session = await getSession();

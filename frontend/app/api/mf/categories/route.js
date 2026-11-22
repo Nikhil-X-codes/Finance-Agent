@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(request) {
   try {
     const session = await getSession();
@@ -32,10 +34,10 @@ export async function GET(request) {
     const data = await aiResponse.json();
     return NextResponse.json(data);
   } catch (error) {
-    console.error("Categories API error:", error);
+    console.error("Categories API error:", error.code || error.name);
     return NextResponse.json(
-      { error: "Internal Server Error", code: "INTERNAL_ERROR" },
-      { status: 500 }
+      { error: "The fund service is unavailable. Try again when the AI service is running.", code: "AI_UNAVAILABLE" },
+      { status: 503 }
     );
   }
 }

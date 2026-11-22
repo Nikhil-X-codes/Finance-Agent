@@ -6,7 +6,7 @@ export async function POST(req) {
     const session = await getSession();
     session.destroy();
 
-    return NextResponse.redirect(new URL("/login", req.url));
+    return NextResponse.redirect(new URL("/login", req.url), 303);
   } catch (error) {
     console.error("Logout error:", error);
     return NextResponse.json(
